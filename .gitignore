@@ -5,6 +5,8 @@
 /CLAUDE.md
 /docs/
 /.claude/
+# Bare clone of the private docs repository (D-042, scripts/docs.sh).
+/.docs.git/
 
 # Build output and logs (PLAN-01); also covered by the template below.
 /Builds/
