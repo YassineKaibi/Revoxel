@@ -13,6 +13,11 @@
 # Editor-generated IDE settings.
 /.vscode/
 
+# Addressables writes a per-platform folder on every build holding only state files the
+# template ignores; ignore the folder and its .meta so a clone never gets an orphan .meta.
+/Assets/AddressableAssetsData/Windows/
+/Assets/AddressableAssetsData/Windows.meta
+
 # GitHub's standard Unity template (github/gitignore, Unity.gitignore), unchanged below.
 
 # This .gitignore file should be placed at the root of your Unity project directory
