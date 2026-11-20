@@ -10,6 +10,9 @@
 /Builds/
 /Logs/
 
+# Editor-generated IDE settings.
+/.vscode/
+
 # GitHub's standard Unity template (github/gitignore, Unity.gitignore), unchanged below.
 
 # This .gitignore file should be placed at the root of your Unity project directory
