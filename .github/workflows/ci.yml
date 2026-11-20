@@ -1,0 +1,105 @@
+# Revoxel CI (PLAN-01, D-007, D-035).
+# format and verify need no Unity license and run on every push and PR.
+# test and build use GameCI and need the secrets UNITY_LICENSE, UNITY_EMAIL and
+# UNITY_PASSWORD (Unity account: STATUS Q-13). Without them they fail (R-1); the
+# local gate output then goes into the PR.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_SDK_VERSION: "10.0.113"
+  UNITY_CLI_VERSION: "1.0.1"
+  # Editor 6000.6.10f1 (D-036) exists only in GameCI image series 4; the v4
+  # actions default to series 3.
+  GAMECI_IMAGE_VERSION: "4"
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+      - run: dotnet tool restore
+      - run: dotnet csharpier check .
+
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      UNITY_NON_INTERACTIVE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned Unity CLI
+        run: |
+          curl -fsSL https://unity.com/install.sh | UNITY_CLI_VERSION="$UNITY_CLI_VERSION" bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: unity projects verify
+        run: |
+          unity --version
+          editor_version="$(sed -n 's/^m_EditorVersion: *//p' ProjectSettings/ProjectVersion.txt | tr -d '[:space:]')"
+          unity projects verify --strict --expect-editor "$editor_version" --format github
+
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/cache@v4
+        with:
+          path: Library
+          key: library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: library-
+      - uses: game-ci/unity-test-runner@v4
+        id: tests
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          testMode: all
+          containerRegistryImageVersion: ${{ env.GAMECI_IMAGE_VERSION }}
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: ${{ steps.tests.outputs.artifactsPath }}
+
+  build:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/cache@v4
+        with:
+          path: Library
+          key: library-windows-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: library-windows-
+      - uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: StandaloneWindows64
+          buildMethod: Revoxel.EditorTools.BuildScript.BuildWindows
+          buildName: Revoxel
+          buildsPath: build
+          containerRegistryImageVersion: ${{ env.GAMECI_IMAGE_VERSION }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Revoxel-Windows
+          path: build/StandaloneWindows64
