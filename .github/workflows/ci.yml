@@ -46,6 +46,8 @@ jobs:
           unity --version
           editor_version="$(sed -n 's/^m_EditorVersion: *//p' ProjectSettings/ProjectVersion.txt | tr -d '[:space:]')"
           unity projects verify --strict --expect-editor "$editor_version" --format github
+      - name: Conflict markers under Assets, Packages, ProjectSettings (D-040)
+        run: bash scripts/check-conflict-markers.sh
 
   test:
     if: github.event_name == 'pull_request'

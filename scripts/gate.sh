@@ -58,8 +58,9 @@ step "2/6 Format check: dotnet csharpier check ."
 dotnet tool restore
 dotnet csharpier check .
 
-step "3/6 Project check: unity projects verify (editor $editor_version)"
+step "3/6 Project check: unity projects verify (editor $editor_version) and conflict markers"
 unity projects verify --strict --expect-editor "$editor_version" --format human
+bash scripts/check-conflict-markers.sh
 
 step "4/6 Compile with analyzers and EditMode tests"
 run_tests EditMode Logs/editmode.xml
