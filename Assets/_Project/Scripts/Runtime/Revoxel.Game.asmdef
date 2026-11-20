@@ -1,0 +1,18 @@
+{
+    "name": "Revoxel.Game",
+    "rootNamespace": "Revoxel",
+    "references": [
+        "Revoxel.World",
+        "Unity.InputSystem",
+        "Unity.Localization"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

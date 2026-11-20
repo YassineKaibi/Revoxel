@@ -1,0 +1,28 @@
+{
+    "name": "Revoxel.Tests.EditMode",
+    "rootNamespace": "Revoxel.Tests.EditMode",
+    "references": [
+        "Revoxel.World",
+        "Revoxel.Game",
+        "Revoxel.EditorTools",
+        "Unity.Localization",
+        "Unity.Localization.Editor",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
