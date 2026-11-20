@@ -5,6 +5,7 @@
         "Revoxel.World",
         "Revoxel.Game",
         "Unity.Localization",
+        "Unity.ResourceManager",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
