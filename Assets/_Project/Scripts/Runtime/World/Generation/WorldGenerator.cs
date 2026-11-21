@@ -62,8 +62,20 @@ namespace Revoxel.World
                 return false;
             }
 
-            var hash = math.hash(new uint3((uint)x, (uint)z, p.TreeSeed));
-            return (hash & 0xFFFFFFu) / 16777216f < p.TreeDensity;
+            return Hash01(p.TreeSeed, x, z) < p.TreeDensity;
+        }
+
+        // Uniform value in [0, 1) per column. math.hash alone is linear in x and z (trees
+        // came out on a lattice), so the murmur3 finalizer mixes the bits.
+        public static float Hash01(uint seed, int x, int z)
+        {
+            var h = math.hash(new uint3((uint)x, (uint)z, seed));
+            h ^= h >> 16;
+            h *= 0x85EBCA6Bu;
+            h ^= h >> 13;
+            h *= 0xC2B2AE35u;
+            h ^= h >> 16;
+            return (h >> 8) * (1f / 16777216f);
         }
 
         public static void GenerateChunk(
@@ -97,8 +109,9 @@ namespace Revoxel.World
             }.Schedule(WorldConstants.ColumnCount, WorldConstants.WorldSizeX, dependency);
 
         // A dry Plage column at the shore, chosen from the seed: walk out from the center in
-        // a seeded direction and keep the last dry Plage column before the sea. Returns the
-        // position of the first Air block above the ground.
+        // a seeded direction to the world edge and keep the outermost dry Plage column, so
+        // ponds and inlets on the way are skipped. Returns the position of the first Air
+        // block above the ground.
         public static int3 FindSpawnPoint(in WorldGenParams p)
         {
             var maxRadius = math.length(p.Center);
@@ -122,10 +135,6 @@ namespace Revoxel.World
                     {
                         best = new int3(column.x, height, column.y);
                         found = true;
-                    }
-                    else if (found && height < p.SeaLevel)
-                    {
-                        break;
                     }
                 }
 

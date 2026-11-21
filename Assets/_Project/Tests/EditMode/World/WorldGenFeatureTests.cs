@@ -10,6 +10,7 @@ namespace Revoxel.Tests.EditMode
     public sealed class WorldGenFeatureTests
     {
         private const int Size = WorldConstants.ChunkSize;
+        private const int ShoreDistance = 4;
 
         private readonly Dictionary<ChunkCoord, byte[]> _chunks =
             new Dictionary<ChunkCoord, byte[]>();
@@ -76,6 +77,49 @@ namespace Revoxel.Tests.EditMode
                 Is.EqualTo(_params.Leaves),
                 "Leaves at the full radius in the next chunk"
             );
+        }
+
+        // A plain hash of (x, z) put the trees on a lattice: look for any offset shared by
+        // many pairs of trees.
+        [Test]
+        public void Gen_TreeHash_HasNoLattice()
+        {
+            const int Grid = 96;
+            const float Density = 0.05f;
+            var trees = new List<int2>();
+            for (var z = 0; z < Grid; z++)
+            for (var x = 0; x < Grid; x++)
+            {
+                if (WorldGenerator.Hash01(12345u, x, z) < Density)
+                {
+                    trees.Add(new int2(x, z));
+                }
+            }
+
+            var expected = Grid * Grid * Density;
+            Assert.That(trees.Count, Is.InRange(expected * 0.7f, expected * 1.3f), "Density off");
+
+            var offsets = new Dictionary<int2, int>();
+            foreach (var a in trees)
+            foreach (var b in trees)
+            {
+                var d = b - a;
+                if (math.all(d == 0) || math.any(math.abs(d) > 12))
+                {
+                    continue;
+                }
+
+                offsets.TryGetValue(d, out var count);
+                offsets[d] = count + 1;
+            }
+
+            var max = 0;
+            foreach (var count in offsets.Values)
+            {
+                max = math.max(max, count);
+            }
+
+            Assert.That(max, Is.LessThan(trees.Count / 4), "Trees repeat at a fixed offset");
         }
 
         private int3 FindTreeOnEastBorder()
