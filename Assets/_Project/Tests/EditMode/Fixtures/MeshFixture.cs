@@ -114,6 +114,46 @@ namespace Revoxel.Tests.EditMode
             }
         }
 
+        // Meshes a chunk (neighbors Air) and applies the result to two Mesh objects.
+        public void MeshInto(
+            Func<int3, byte> blockAt,
+            UnityEngine.Mesh render,
+            UnityEngine.Mesh collision
+        )
+        {
+            using var padded = new NativeArray<byte>(
+                WorldConstants.PaddedBlocks,
+                Allocator.TempJob
+            );
+            var p = padded;
+            for (var y = 0; y < WorldConstants.ChunkSize; y++)
+            for (var z = 0; z < WorldConstants.ChunkSize; z++)
+            for (var x = 0; x < WorldConstants.ChunkSize; x++)
+            {
+                p[Coords.PaddedIndex(x, y, z)] = blockAt(new int3(x, y, z));
+            }
+
+            var meshes = UnityEngine.Mesh.AllocateWritableMeshData(2);
+            using var renderLayout = ChunkMesher.CreateRenderLayout(Allocator.TempJob);
+            using var collisionLayout = ChunkMesher.CreateCollisionLayout(Allocator.TempJob);
+            new ChunkMeshJob
+            {
+                PaddedBlocks = padded,
+                RenderData = _renderData,
+                RenderLayout = renderLayout,
+                CollisionLayout = collisionLayout,
+                RenderMesh = meshes[0],
+                CollisionMesh = meshes[1],
+            }.Run();
+            UnityEngine.Mesh.ApplyAndDisposeWritableMeshData(
+                meshes,
+                new[] { render, collision },
+                MeshUpdateFlags.DontRecalculateBounds
+            );
+            render.bounds = ChunkMesher.ChunkLocalBounds;
+            collision.bounds = ChunkMesher.ChunkLocalBounds;
+        }
+
         public void Dispose()
         {
             if (_renderData.IsCreated)
