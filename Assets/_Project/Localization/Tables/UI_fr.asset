@@ -26,6 +26,22 @@ MonoBehaviour:
     m_Localized: Changer de langue
     m_Metadata:
       m_Items: []
+  - m_Id: 254466679517184
+    m_Localized: "Chargement\u2026"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466696294400
+    m_Localized: Temps de frame
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466700488704
+    m_Localized: Chunks
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466700488705
+    m_Localized: File de remesh
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []
