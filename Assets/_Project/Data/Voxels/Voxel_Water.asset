@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d4c49f4934a568416a9fefd60a42d5be, type: 3}
+  m_Name: Voxel_Water
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.VoxelType
+  _id: 1
+  _nameKey: voxel.water.name
+  _isSolid: 0
+  _isOpaque: 0
+  _baseColor: {r: 0.22745098, g: 0.56078434, b: 0.8156863, a: 1}
+  _secondaryColor: {r: 0.19333334, g: 0.4766667, b: 0.6933334, a: 1}
+  _pattern: 0
+  _patternScale: 1
+  _patternContrast: 0
