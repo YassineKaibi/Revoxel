@@ -8,6 +8,7 @@ namespace Revoxel.Tests.EditMode
     {
         public const string BlocksFolder = "Assets/_Project/Data/Blocks";
         public const string RegistryPath = BlocksFolder + "/BlockRegistry.asset";
+        public const string MaterialPath = "Assets/_Project/Art/Materials/Mat_Voxel.mat";
 
         public static BlockRegistry LoadRegistry() =>
             AssetDatabase.LoadAssetAtPath<BlockRegistry>(RegistryPath);
