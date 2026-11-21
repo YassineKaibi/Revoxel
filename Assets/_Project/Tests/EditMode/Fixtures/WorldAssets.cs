@@ -10,6 +10,15 @@ namespace Revoxel.Tests.EditMode
         public const string RegistryPath = BlocksFolder + "/BlockRegistry.asset";
         public const string MaterialPath = "Assets/_Project/Art/Materials/Mat_Voxel.mat";
 
+        public const string GenSettingsPath =
+            "Assets/_Project/Data/World/Placeholder_WorldGenSettings.asset";
+
+        public static WorldGenSettings LoadGenSettings() =>
+            AssetDatabase.LoadAssetAtPath<WorldGenSettings>(GenSettingsPath);
+
+        public static WorldGenParams Params(int seed) =>
+            WorldGenParams.Create(new WorldSeed(seed), LoadGenSettings());
+
         public static BlockRegistry LoadRegistry() =>
             AssetDatabase.LoadAssetAtPath<BlockRegistry>(RegistryPath);
     }
