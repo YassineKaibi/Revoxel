@@ -7,6 +7,10 @@ namespace Revoxel.World
     {
         public const string ShaderName = "Revoxel/Voxel";
 
+        private const float IslandVoxels =
+            (WorldConstants.IslandMaxChunkXZ - WorldConstants.IslandMinChunkXZ)
+            * WorldConstants.ChunkSize;
+
         public static readonly int CorruptionTexId = Shader.PropertyToID("_RevoxelCorruptionTex");
         public static readonly int CorruptionTexScaleId = Shader.PropertyToID(
             "_RevoxelCorruptionTexScale"
@@ -18,7 +22,7 @@ namespace Revoxel.World
             Shader.SetGlobalTexture(CorruptionTexId, Texture2D.whiteTexture);
             Shader.SetGlobalVector(
                 CorruptionTexScaleId,
-                new Vector4(1f / WorldConstants.WorldSizeX, 1f / WorldConstants.WorldSizeZ, 0f, 0f)
+                new Vector4(1f / IslandVoxels, 1f / IslandVoxels, 0f, 0f)
             );
         }
     }

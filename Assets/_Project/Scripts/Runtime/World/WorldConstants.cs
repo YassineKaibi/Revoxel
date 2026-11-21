@@ -1,30 +1,30 @@
 namespace Revoxel.World
 {
-    // Structural sizes of the demo world (D-011). These are the only literals allowed in
+    // Structural sizes of the world (D-050). These are the only literals allowed in
     // World code; they are structure, not tuning.
     public static class WorldConstants
     {
-        public const int ChunkSize = 16;
-        public const int ChunkShift = 4;
+        // A voxel is 0.125 m: eight per meter.
+        public const float VoxelSize = 0.125f;
+        public const int VoxelsPerMeter = 8;
+
+        public const int ChunkSize = 32;
+        public const int ChunkShift = 5;
         public const int ChunkMask = ChunkSize - 1;
+        public const int VoxelsPerChunk = ChunkSize * ChunkSize * ChunkSize;
 
-        public const int WorldSizeX = 256;
-        public const int WorldSizeZ = 256;
-        public const int WorldHeight = 64;
-
-        public const int ChunksX = WorldSizeX / ChunkSize;
-        public const int ChunksY = WorldHeight / ChunkSize;
-        public const int ChunksZ = WorldSizeZ / ChunkSize;
-        public const int ChunkCount = ChunksX * ChunksY * ChunksZ;
-
-        public const int BlocksPerChunk = ChunkSize * ChunkSize * ChunkSize;
-        public const int ColumnCount = WorldSizeX * WorldSizeZ;
-
-        // The meshing input: the chunk plus one layer from each neighbor (D-031).
+        // The meshing input: the chunk plus one layer from each of its 26 neighbors.
         public const int PaddedSize = ChunkSize + 2;
-        public const int PaddedBlocks = PaddedSize * PaddedSize * PaddedSize;
+        public const int PaddedVoxels = PaddedSize * PaddedSize * PaddedSize;
 
-        // Block ids are bytes, so a lookup table indexed by id has 256 entries.
-        public const int MaxBlockTypes = 256;
+        // The island: chunk x and z from -1,000 to 999, chunk y from 0 to 127
+        // (8,000 m by 512 m, centered on the origin).
+        public const int IslandMinChunkXZ = -1000;
+        public const int IslandMaxChunkXZ = 1000;
+        public const int ChunksY = 128;
+        public const int WorldHeightVoxels = ChunksY * ChunkSize;
+
+        // Voxel ids are ushort; a lookup table indexed by id has this many entries.
+        public const int MaxVoxelTypes = 1024;
     }
 }

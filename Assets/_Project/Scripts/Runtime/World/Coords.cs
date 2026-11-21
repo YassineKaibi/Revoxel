@@ -2,22 +2,23 @@ using Unity.Mathematics;
 
 namespace Revoxel.World
 {
-    // The only place doing coordinate arithmetic (docs/05 "Code rules").
+    // The only place doing coordinate arithmetic (docs/05 "Code rules"). Voxel coordinates
+    // are world coordinates in voxel units; positions are meters.
     public static class Coords
     {
         private const int Size = WorldConstants.ChunkSize;
         private const int Padded = WorldConstants.PaddedSize;
 
         // Floor division by the chunk size, correct for negative coordinates (the arithmetic
-        // shift rounds toward negative infinity), so the infinite world later needs no change.
-        public static void WorldToChunk(int3 world, out ChunkCoord chunk, out int3 local)
+        // shift rounds toward negative infinity).
+        public static void WorldToChunk(int3 voxel, out ChunkCoord chunk, out int3 local)
         {
-            chunk = new ChunkCoord(world >> WorldConstants.ChunkShift);
-            local = world & WorldConstants.ChunkMask;
+            chunk = new ChunkCoord(voxel >> WorldConstants.ChunkShift);
+            local = voxel & WorldConstants.ChunkMask;
         }
 
-        public static ChunkCoord ChunkOf(int3 world) =>
-            new ChunkCoord(world >> WorldConstants.ChunkShift);
+        public static ChunkCoord ChunkOf(int3 voxel) =>
+            new ChunkCoord(voxel >> WorldConstants.ChunkShift);
 
         public static int3 ChunkOrigin(ChunkCoord chunk) => chunk.Value * Size;
 
@@ -28,7 +29,11 @@ namespace Revoxel.World
         public static int LocalIndex(int x, int y, int z) => x + Size * (z + Size * y);
 
         public static int3 LocalFromIndex(int index) =>
-            new int3(index % Size, index / (Size * Size), (index / Size) % Size);
+            new int3(
+                index & WorldConstants.ChunkMask,
+                index >> (2 * WorldConstants.ChunkShift),
+                (index >> WorldConstants.ChunkShift) & WorldConstants.ChunkMask
+            );
 
         public static bool IsLocalInRange(int3 local) =>
             math.all(local >= 0) && math.all(local < Size);
@@ -37,10 +42,15 @@ namespace Revoxel.World
         public static int PaddedIndex(int x, int y, int z) =>
             (x + 1) + Padded * ((z + 1) + Padded * (y + 1));
 
-        // Index of a world column (x, z) for the zone map and corruption (D-033).
-        public static int ColumnIndex(int x, int z) => x + WorldConstants.WorldSizeX * z;
+        // Min corner of a voxel, in meters. Exact: voxel size is a power of two.
+        public static float3 VoxelToWorldPosition(int3 voxel) =>
+            (float3)voxel * WorldConstants.VoxelSize;
 
-        // World block containing a world-space position (floor on each axis).
-        public static int3 WorldPositionToBlock(float3 position) => (int3)math.floor(position);
+        // Voxel containing a position in meters (floor on each axis).
+        public static int3 WorldPositionToVoxel(float3 position) =>
+            (int3)math.floor(position * WorldConstants.VoxelsPerMeter);
+
+        // The chunk column (x, z) a chunk belongs to: the unit of streaming.
+        public static int2 ColumnOf(ChunkCoord chunk) => chunk.Value.xz;
     }
 }

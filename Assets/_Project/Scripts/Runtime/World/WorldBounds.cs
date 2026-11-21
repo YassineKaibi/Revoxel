@@ -2,8 +2,7 @@ using Unity.Mathematics;
 
 namespace Revoxel.World
 {
-    // Limits the world to a box of chunks (D-030). Min is inclusive, Max exclusive.
-    // A streaming world later replaces this with a load radius around the player.
+    // Limits the world to a box of chunks (D-030, D-050). Min is inclusive, Max exclusive.
     public sealed class WorldBounds
     {
         public WorldBounds(ChunkCoord min, ChunkCoord max)
@@ -18,17 +17,17 @@ namespace Revoxel.World
 
         public static WorldBounds Island() =>
             new WorldBounds(
-                new ChunkCoord(0, 0, 0),
+                new ChunkCoord(WorldConstants.IslandMinChunkXZ, 0, WorldConstants.IslandMinChunkXZ),
                 new ChunkCoord(
-                    WorldConstants.ChunksX,
+                    WorldConstants.IslandMaxChunkXZ,
                     WorldConstants.ChunksY,
-                    WorldConstants.ChunksZ
+                    WorldConstants.IslandMaxChunkXZ
                 )
             );
 
         public bool Contains(ChunkCoord chunk) =>
             math.all(chunk.Value >= Min.Value) && math.all(chunk.Value < Max.Value);
 
-        public bool ContainsBlock(int3 world) => Contains(Coords.ChunkOf(world));
+        public bool ContainsVoxel(int3 voxel) => Contains(Coords.ChunkOf(voxel));
     }
 }
