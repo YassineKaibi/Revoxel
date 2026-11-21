@@ -12,6 +12,7 @@ namespace Revoxel.Core
     // Reads devices directly: the real input actions belong to WP-03.
     public sealed class DebugFlyCamera : MonoBehaviour
     {
+#if UNITY_EDITOR || REVOXEL_DEBUG
         [SerializeField]
         private VoxelWorld _world;
 
@@ -32,7 +33,6 @@ namespace Revoxel.Core
 
         public bool IsCapturingMouse => Cursor.lockState == CursorLockMode.Locked;
 
-#if UNITY_EDITOR || REVOXEL_DEBUG
         private void OnEnable()
         {
             var angles = transform.eulerAngles;

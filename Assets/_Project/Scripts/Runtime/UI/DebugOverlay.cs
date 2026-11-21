@@ -31,6 +31,7 @@ namespace Revoxel.UI
             SwitchLanguageKey
         );
 
+#if UNITY_EDITOR || REVOXEL_DEBUG
         [SerializeField]
         private LocalizedString _frameTimeText = new LocalizedString(TableName, FrameTimeKey);
 
@@ -43,14 +44,16 @@ namespace Revoxel.UI
         [SerializeField]
         private VoxelWorld _world;
 
-        private string _hello = string.Empty;
-        private string _switchLanguage = string.Empty;
         private string _frameTimeLabel = string.Empty;
         private string _chunksLabel = string.Empty;
         private string _dirtyQueueLabel = string.Empty;
-        private string _counters = string.Empty;
         private float _smoothedFrameTime;
         private float _nextCountersRefresh;
+#endif
+
+        private string _hello = string.Empty;
+        private string _switchLanguage = string.Empty;
+        private string _counters = string.Empty;
 
         public string CurrentText => _hello;
 
@@ -72,31 +75,35 @@ namespace Revoxel.UI
         {
             _helloText.StringChanged += OnHelloChanged;
             _switchLanguageText.StringChanged += OnSwitchLanguageChanged;
+#if UNITY_EDITOR || REVOXEL_DEBUG
             _frameTimeText.StringChanged += OnFrameTimeChanged;
             _chunksText.StringChanged += OnChunksChanged;
             _dirtyQueueText.StringChanged += OnDirtyQueueChanged;
+#endif
         }
 
         private void OnDisable()
         {
             _helloText.StringChanged -= OnHelloChanged;
             _switchLanguageText.StringChanged -= OnSwitchLanguageChanged;
+#if UNITY_EDITOR || REVOXEL_DEBUG
             _frameTimeText.StringChanged -= OnFrameTimeChanged;
             _chunksText.StringChanged -= OnChunksChanged;
             _dirtyQueueText.StringChanged -= OnDirtyQueueChanged;
+#endif
         }
 
         private void OnHelloChanged(string value) => _hello = value;
 
         private void OnSwitchLanguageChanged(string value) => _switchLanguage = value;
 
+#if UNITY_EDITOR || REVOXEL_DEBUG
         private void OnFrameTimeChanged(string value) => _frameTimeLabel = value;
 
         private void OnChunksChanged(string value) => _chunksLabel = value;
 
         private void OnDirtyQueueChanged(string value) => _dirtyQueueLabel = value;
 
-#if UNITY_EDITOR || REVOXEL_DEBUG
         private void Update()
         {
             var frameTime = Time.unscaledDeltaTime * 1000f;

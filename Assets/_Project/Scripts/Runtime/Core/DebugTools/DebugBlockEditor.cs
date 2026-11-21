@@ -14,6 +14,7 @@ namespace Revoxel.Core
     [RequireComponent(typeof(DebugFlyCamera))]
     public sealed class DebugBlockEditor : MonoBehaviour
     {
+#if UNITY_EDITOR || REVOXEL_DEBUG
         [SerializeField]
         private VoxelWorld _world;
 
@@ -28,7 +29,6 @@ namespace Revoxel.Core
         [Tooltip("Debug tool value, seconds before a test cube is removed.")]
         private float _testCubeLifetime = 20f;
 
-#if UNITY_EDITOR || REVOXEL_DEBUG
         private DebugFlyCamera _flyCamera;
 
         private void Awake()
