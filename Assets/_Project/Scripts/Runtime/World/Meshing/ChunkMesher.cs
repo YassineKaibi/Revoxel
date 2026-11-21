@@ -4,17 +4,20 @@ using UnityEngine.Rendering;
 
 namespace Revoxel.World
 {
-    // Vertex layouts and helpers shared by VoxelWorld and the tests.
+    // Vertex layouts and helpers shared by the mesh pipeline and the tests.
     public static class ChunkMesher
     {
+        private const float ChunkMeters = WorldConstants.ChunkSize * WorldConstants.VoxelSize;
+
+        // A chunk is a 4 m cube in its own space.
         public static readonly Bounds ChunkLocalBounds = new Bounds(
-            Vector3.one * (WorldConstants.ChunkSize * 0.5f),
-            Vector3.one * WorldConstants.ChunkSize
+            Vector3.one * (ChunkMeters * 0.5f),
+            Vector3.one * ChunkMeters
         );
 
         public static NativeArray<VertexAttributeDescriptor> CreateRenderLayout(Allocator allocator)
         {
-            var layout = new NativeArray<VertexAttributeDescriptor>(4, allocator);
+            var layout = new NativeArray<VertexAttributeDescriptor>(3, allocator);
             layout[0] = new VertexAttributeDescriptor(
                 VertexAttribute.Position,
                 VertexAttributeFormat.Float32,
@@ -26,14 +29,9 @@ namespace Revoxel.World
                 3
             );
             layout[2] = new VertexAttributeDescriptor(
-                VertexAttribute.Color,
-                VertexAttributeFormat.UNorm8,
-                4
-            );
-            layout[3] = new VertexAttributeDescriptor(
                 VertexAttribute.TexCoord0,
-                VertexAttributeFormat.UNorm8,
-                4
+                VertexAttributeFormat.Float32,
+                2
             );
             return layout;
         }

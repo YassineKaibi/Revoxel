@@ -1,16 +1,17 @@
 using System.Runtime.InteropServices;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace Revoxel.World
 {
-    // Render vertex: COLOR is the restored color, TEXCOORD0 the corrupted color (both linear).
+    // One vertex of a chunk render mesh; matches ChunkMesher.CreateRenderLayout.
     [StructLayout(LayoutKind.Sequential)]
     public struct VoxelVertex
     {
+        // Meters, chunk-local.
         public float3 Position;
         public float3 Normal;
-        public Color32 Restored;
-        public Color32 Corrupted;
+
+        // x: voxel id. y: occlusion 0 to 1, where 1 is open.
+        public float2 MaterialAo;
     }
 }
