@@ -23,6 +23,22 @@ MonoBehaviour:
     m_Key: ui.debug.switch_language
     m_Metadata:
       m_Items: []
+  - m_Id: 254466679517184
+    m_Key: ui.loading.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466696294400
+    m_Key: ui.debug.frame_time
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466700488704
+    m_Key: ui.debug.chunks
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466700488705
+    m_Key: ui.debug.dirty_queue
+    m_Metadata:
+      m_Items: []
   m_Metadata:
     m_Items: []
   m_KeyGenerator:

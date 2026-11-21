@@ -26,6 +26,22 @@ MonoBehaviour:
     m_Localized: Switch language
     m_Metadata:
       m_Items: []
+  - m_Id: 254466679517184
+    m_Localized: "Loading\u2026"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466696294400
+    m_Localized: Frame time
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466700488704
+    m_Localized: Chunks
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466700488705
+    m_Localized: Remesh queue
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []
