@@ -13,6 +13,9 @@ namespace Revoxel.World
         // so the shore stays at sea level. Shape constant, not tuning.
         private const float HillFadeIn = 4f;
 
+        // Directions tried around the island when looking for the spawn point.
+        private const int SpawnAttempts = 16;
+
         // Height of a column: the number of solid blocks from y = 0, so the top block is at
         // height - 1. Columns below sea level are under water.
         public static int ColumnHeight(in WorldGenParams p, int x, int z)
@@ -52,6 +55,17 @@ namespace Revoxel.World
             return r < p.ForetRadius ? ZoneId.Foret : ZoneId.Plage;
         }
 
+        public static bool IsTreeColumn(in WorldGenParams p, int x, int z, ZoneId zone)
+        {
+            if (zone != ZoneId.Foret)
+            {
+                return false;
+            }
+
+            var hash = math.hash(new uint3((uint)x, (uint)z, p.TreeSeed));
+            return (hash & 0xFFFFFFu) / 16777216f < p.TreeDensity;
+        }
+
         public static void GenerateChunk(
             in WorldGenParams p,
             ChunkCoord coord,
@@ -81,6 +95,49 @@ namespace Revoxel.World
                 ZoneMap = zoneMap,
                 HeightMap = heightMap,
             }.Schedule(WorldConstants.ColumnCount, WorldConstants.WorldSizeX, dependency);
+
+        // A dry Plage column at the shore, chosen from the seed: walk out from the center in
+        // a seeded direction and keep the last dry Plage column before the sea. Returns the
+        // position of the first Air block above the ground.
+        public static int3 FindSpawnPoint(in WorldGenParams p)
+        {
+            var maxRadius = math.length(p.Center);
+            for (var attempt = 0; attempt < SpawnAttempts; attempt++)
+            {
+                var angle = p.SpawnAngle + attempt * (2f * math.PI / SpawnAttempts);
+                var dir = new float2(math.cos(angle), math.sin(angle));
+                var found = false;
+                var best = int3.zero;
+                for (var r = 0f; r < maxRadius; r += 1f)
+                {
+                    var column = (int2)math.floor(p.Center + dir * r);
+                    if (!IsColumnInWorld(column.x, column.y))
+                    {
+                        break;
+                    }
+
+                    var height = ColumnHeight(p, column.x, column.y);
+                    var zone = ColumnZone(p, column.x, column.y, height);
+                    if (zone == ZoneId.Plage && height > p.SeaLevel)
+                    {
+                        best = new int3(column.x, height, column.y);
+                        found = true;
+                    }
+                    else if (found && height < p.SeaLevel)
+                    {
+                        break;
+                    }
+                }
+
+                if (found)
+                {
+                    return best;
+                }
+            }
+
+            var center = (int2)p.Center;
+            return new int3(center.x, ColumnHeight(p, center.x, center.y), center.y);
+        }
 
         public static bool IsColumnInWorld(int x, int z) =>
             x >= 0 && z >= 0 && x < WorldConstants.WorldSizeX && z < WorldConstants.WorldSizeZ;
