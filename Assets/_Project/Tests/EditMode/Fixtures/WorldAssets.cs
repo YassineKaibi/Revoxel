@@ -10,7 +10,16 @@ namespace Revoxel.Tests.EditMode
         public const string RegistryPath = VoxelsFolder + "/VoxelRegistry.asset";
         public const string MaterialPath = "Assets/_Project/Art/Materials/Mat_Voxel.mat";
 
+        public const string TerrainSettingsPath =
+            "Assets/_Project/Data/World/Placeholder_TerrainSettings.asset";
+
         public static VoxelRegistry LoadRegistry() =>
             AssetDatabase.LoadAssetAtPath<VoxelRegistry>(RegistryPath);
+
+        public static TerrainSettings LoadTerrainSettings() =>
+            AssetDatabase.LoadAssetAtPath<TerrainSettings>(TerrainSettingsPath);
+
+        public static TerrainParams TerrainParams(int seed) =>
+            World.TerrainParams.Create(new WorldSeed(seed), LoadTerrainSettings());
     }
 }

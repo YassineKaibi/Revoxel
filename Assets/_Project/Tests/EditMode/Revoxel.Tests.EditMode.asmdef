@@ -4,6 +4,8 @@
     "references": [
         "Revoxel.World",
         "Revoxel.Game",
+        "Unity.Mathematics",
+        "Unity.Collections",
         "Revoxel.EditorTools",
         "Unity.Localization",
         "Unity.Localization.Editor",
