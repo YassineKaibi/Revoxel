@@ -32,5 +32,56 @@ namespace Revoxel.Tests.EditMode
             Assert.That(material, Is.Not.Null, $"No material at {WorldAssets.MaterialPath}");
             Assert.That(material.shader.name, Is.EqualTo(VoxelShaderGlobals.ShaderName));
         }
+
+        [Test]
+        public void WorldRender_SettingsAsset_IsValid()
+        {
+            var settings = WorldAssets.LoadRenderSettings();
+
+            Assert.That(settings, Is.Not.Null, $"No settings at {WorldAssets.RenderSettingsPath}");
+            Assert.That(settings.TryValidate(out var error), Is.True, error);
+            Assert.That(settings.name, Does.StartWith("Placeholder_"));
+        }
+
+        [Test]
+        public void VoxelShaderGlobals_SetDefaults_UsesSettings()
+        {
+            var settings = WorldAssets.LoadRenderSettings();
+            var table = new Texture2D(10, 3);
+            try
+            {
+                VoxelShaderGlobals.SetDefaults(settings);
+                VoxelShaderGlobals.SetMaterialTable(table);
+
+                Assert.That(Shader.GetGlobalFloat(VoxelShaderGlobals.CorruptionId), Is.EqualTo(1f));
+                Assert.That(
+                    Shader.GetGlobalFloat(VoxelShaderGlobals.AoMinId),
+                    Is.EqualTo(settings.AoMin)
+                );
+                Assert.That(
+                    (Color)Shader.GetGlobalVector(VoxelShaderGlobals.CorruptionTintId),
+                    Is.EqualTo(settings.CorruptionTint.linear)
+                );
+                Assert.That(
+                    Shader.GetGlobalFloat(VoxelShaderGlobals.MaterialTableWidthId),
+                    Is.EqualTo(10f)
+                );
+                Assert.That(
+                    Shader.GetGlobalTexture(VoxelShaderGlobals.MaterialTableId),
+                    Is.SameAs(table)
+                );
+
+                VoxelShaderGlobals.SetCorruption(0.25f);
+                Assert.That(
+                    Shader.GetGlobalFloat(VoxelShaderGlobals.CorruptionId),
+                    Is.EqualTo(0.25f)
+                );
+            }
+            finally
+            {
+                Object.DestroyImmediate(table);
+                VoxelShaderGlobals.SetDefaults(settings);
+            }
+        }
     }
 }

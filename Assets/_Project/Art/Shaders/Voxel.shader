@@ -1,8 +1,10 @@
-// Revoxel voxel shader (D-044, D-028). Hand-written HLSL for URP.
-// Base color = lerp(restored, corrupted, c). COLOR holds the restored color and TEXCOORD0
-// the corrupted color, both linear. c is the global corruption texture sampled at the
-// world column (x, z), point filtered; WP-06 drives it, VoxelWorld sets it to white
-// (fully corrupted) at boot.
+// Revoxel voxel shader (D-044, D-051). Hand-written HLSL for URP.
+// Each vertex carries its voxel id and occlusion (TEXCOORD0). The id indexes the global
+// material table (VoxelRegistry.CreateMaterialTable): row 0 base color, row 1 secondary
+// color (both linear), row 2 (pattern / 3, scale / 8 m, contrast). The albedo blends
+// base toward secondary by a smooth world-space pattern, so adjacent voxels of one type
+// read as one continuous material. Occlusion darkens inside corners only. Corruption
+// grades the color toward a tinted luminance; one global value until the corruption WP.
 Shader "Revoxel/Voxel"
 {
     Properties
@@ -39,17 +41,17 @@ Shader "Revoxel/Voxel"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/AmbientOcclusion.hlsl"
 
-            TEXTURE2D(_RevoxelCorruptionTex);
-            SAMPLER(sampler_revoxel_point_clamp);
-            // xy: 1 / world size in x and z, set by VoxelWorld from WorldConstants.
-            float4 _RevoxelCorruptionTexScale;
+            TEXTURE2D(_RevoxelMaterialTable);
+            float _RevoxelMaterialTableWidth;
+            float _RevoxelCorruption;
+            float4 _RevoxelCorruptionTint;
+            float _RevoxelAoMin;
 
             struct Attributes
             {
                 float4 positionOS : POSITION;
                 float3 normalOS : NORMAL;
-                float4 restored : COLOR;
-                float4 corrupted : TEXCOORD0;
+                float2 materialAo : TEXCOORD0;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -58,9 +60,8 @@ Shader "Revoxel/Voxel"
                 float4 positionCS : SV_POSITION;
                 float3 positionWS : TEXCOORD0;
                 float3 normalWS : TEXCOORD1;
-                half3 restored : TEXCOORD2;
-                half3 corrupted : TEXCOORD3;
-                half fogFactor : TEXCOORD4;
+                float2 materialAo : TEXCOORD2;
+                half fogFactor : TEXCOORD3;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -76,10 +77,55 @@ Shader "Revoxel/Voxel"
                 output.positionCS = position.positionCS;
                 output.positionWS = position.positionWS;
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);
-                output.restored = input.restored.rgb;
-                output.corrupted = input.corrupted.rgb;
+                output.materialAo = input.materialAo;
                 output.fogFactor = ComputeFogFactor(position.positionCS.z);
                 return output;
+            }
+
+            float Hash31(float3 p)
+            {
+                p = frac(p * 0.1031);
+                p += dot(p, p.zyx + 31.32);
+                return frac((p.x + p.y) * p.z);
+            }
+
+            // Smooth 3D value noise, 0 to 1.
+            float ValueNoise(float3 p)
+            {
+                float3 i = floor(p);
+                float3 f = frac(p);
+                float3 w = f * f * (3.0 - 2.0 * f);
+                float n000 = Hash31(i);
+                float n100 = Hash31(i + float3(1, 0, 0));
+                float n010 = Hash31(i + float3(0, 1, 0));
+                float n110 = Hash31(i + float3(1, 1, 0));
+                float n001 = Hash31(i + float3(0, 0, 1));
+                float n101 = Hash31(i + float3(1, 0, 1));
+                float n011 = Hash31(i + float3(0, 1, 1));
+                float n111 = Hash31(i + float3(1, 1, 1));
+                float nx00 = lerp(n000, n100, w.x);
+                float nx10 = lerp(n010, n110, w.x);
+                float nx01 = lerp(n001, n101, w.x);
+                float nx11 = lerp(n011, n111, w.x);
+                return lerp(lerp(nx00, nx10, w.y), lerp(nx01, nx11, w.y), w.z);
+            }
+
+            // 0 Flat, 1 Grain (stretched along world Y), 2 Mottle, 3 Patches (soft threshold).
+            float Pattern(int pattern, float3 positionWS, float scale)
+            {
+                if (pattern == 0)
+                {
+                    return 0.0;
+                }
+
+                float3 p = positionWS / max(scale, 0.01);
+                if (pattern == 1)
+                {
+                    p.y *= 0.15;
+                }
+
+                float n = ValueNoise(p);
+                return pattern == 3 ? smoothstep(0.4, 0.6, n) : n;
             }
 
             half4 Frag(Varyings input) : SV_Target
@@ -87,12 +133,19 @@ Shader "Revoxel/Voxel"
                 UNITY_SETUP_INSTANCE_ID(input);
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
-                // Sample the column the face belongs to: nudge inward along the normal so a
-                // side face on a column border reads its own column.
-                float2 column = input.positionWS.xz - input.normalWS.xz * 0.5;
-                float2 uv = column * _RevoxelCorruptionTexScale.xy;
-                half c = SAMPLE_TEXTURE2D(_RevoxelCorruptionTex, sampler_revoxel_point_clamp, uv).r;
-                half3 albedo = lerp(input.restored, input.corrupted, c);
+                int id = (int)round(input.materialAo.x);
+                id = clamp(id, 0, (int)_RevoxelMaterialTableWidth - 1);
+                half3 baseColor = LOAD_TEXTURE2D(_RevoxelMaterialTable, int2(id, 0)).rgb;
+                half3 secondary = LOAD_TEXTURE2D(_RevoxelMaterialTable, int2(id, 1)).rgb;
+                float4 material = LOAD_TEXTURE2D(_RevoxelMaterialTable, int2(id, 2));
+                int pattern = (int)round(material.r * 3.0);
+                float scale = material.g * 8.0;
+                float contrast = material.b;
+
+                half3 albedo = lerp(baseColor, secondary, Pattern(pattern, input.positionWS, scale) * contrast);
+                half luminance = dot(albedo, half3(0.2126, 0.7152, 0.0722));
+                albedo = lerp(albedo, luminance * _RevoxelCorruptionTint.rgb, _RevoxelCorruption);
+                half occlusion = lerp(_RevoxelAoMin, 1.0, saturate(input.materialAo.y));
 
                 float3 normalWS = normalize(input.normalWS);
                 float4 shadowCoord = TransformWorldToShadowCoord(input.positionWS);
@@ -108,7 +161,7 @@ Shader "Revoxel/Voxel"
                     direct *= ao.directAmbientOcclusion;
                 #endif
 
-                half3 color = albedo * (direct + ambient);
+                half3 color = albedo * occlusion * (direct + ambient);
                 color = MixFog(color, input.fogFactor);
                 return half4(color, 1);
             }

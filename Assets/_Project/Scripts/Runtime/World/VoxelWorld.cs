@@ -9,6 +9,9 @@ namespace Revoxel.World
     // queue. Must sit at the world origin: voxel coordinates are world coordinates.
     public sealed class VoxelWorld : MonoBehaviour
     {
+        [SerializeField]
+        private WorldRenderSettings _renderSettings;
+
         private readonly Dictionary<ChunkCoord, Chunk> _chunks =
             new Dictionary<ChunkCoord, Chunk>();
         private readonly List<Chunk> _dirty = new List<Chunk>();
@@ -182,7 +185,10 @@ namespace Revoxel.World
 
         private void Awake()
         {
-            VoxelShaderGlobals.SetDefaults();
+            if (_renderSettings != null)
+            {
+                VoxelShaderGlobals.SetDefaults(_renderSettings);
+            }
         }
 
         private void OnDestroy()

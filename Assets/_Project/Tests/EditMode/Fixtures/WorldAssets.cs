@@ -13,6 +13,12 @@ namespace Revoxel.Tests.EditMode
         public const string TerrainSettingsPath =
             "Assets/_Project/Data/World/Placeholder_TerrainSettings.asset";
 
+        public const string RenderSettingsPath =
+            "Assets/_Project/Data/World/Placeholder_WorldRenderSettings.asset";
+
+        public static WorldRenderSettings LoadRenderSettings() =>
+            AssetDatabase.LoadAssetAtPath<WorldRenderSettings>(RenderSettingsPath);
+
         public static VoxelRegistry LoadRegistry() =>
             AssetDatabase.LoadAssetAtPath<VoxelRegistry>(RegistryPath);
 
