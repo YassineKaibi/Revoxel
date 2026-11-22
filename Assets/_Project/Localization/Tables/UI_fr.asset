@@ -34,12 +34,20 @@ MonoBehaviour:
     m_Localized: Temps de frame
     m_Metadata:
       m_Items: []
-  - m_Id: 254466700488704
-    m_Localized: Chunks
+  - m_Id: 456720325947392
+    m_Localized: Vues de chunks
     m_Metadata:
       m_Items: []
-  - m_Id: 254466700488705
-    m_Localized: File de remesh
+  - m_Id: 456720267227136
+    m_Localized: "Chunks charg\xE9s"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947393
+    m_Localized: "T\xE2ches en attente"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947394
+    m_Localized: "M\xE9moire voxels"
     m_Metadata:
       m_Items: []
   references:

@@ -34,12 +34,20 @@ MonoBehaviour:
     m_Localized: Frame time
     m_Metadata:
       m_Items: []
-  - m_Id: 254466700488704
-    m_Localized: Chunks
+  - m_Id: 456720325947392
+    m_Localized: Chunk views
     m_Metadata:
       m_Items: []
-  - m_Id: 254466700488705
-    m_Localized: Remesh queue
+  - m_Id: 456720267227136
+    m_Localized: Loaded chunks
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947393
+    m_Localized: Pending jobs
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947394
+    m_Localized: Voxel memory
     m_Metadata:
       m_Items: []
   references:

@@ -1,3 +1,4 @@
+using Revoxel.World;
 using UnityEngine;
 #if UNITY_EDITOR || REVOXEL_DEBUG
 using UnityEngine.InputSystem;
@@ -7,13 +8,20 @@ namespace Revoxel.Core
 {
     // Debug fly camera (PLAN-02 "Debug tools", D-045): WASD to move, E and Q up and down,
     // Shift to go faster, mouse to look. Click the game view to capture the mouse, Escape
-    // to release it.
+    // to release it. Starts 2 m above the surface at the origin.
     // Reads devices directly: the real input actions belong to WP-03.
     public sealed class DebugFlyCamera : MonoBehaviour
     {
 #if UNITY_EDITOR || REVOXEL_DEBUG
         [SerializeField]
-        [Tooltip("Debug tool value, blocks per second.")]
+        private VoxelWorld _world;
+
+        [SerializeField]
+        [Tooltip("Debug tool value, meters above the surface at the start.")]
+        private float _startHeight = 2f;
+
+        [SerializeField]
+        [Tooltip("Debug tool value, meters per second.")]
         private float _speed = 12f;
 
         [SerializeField]
@@ -34,6 +42,14 @@ namespace Revoxel.Core
             var angles = transform.eulerAngles;
             _yaw = angles.y;
             _pitch = angles.x > 180f ? angles.x - 360f : angles.x;
+        }
+
+        private void Start()
+        {
+            if (_world != null && _world.TryGetSurfaceHeightMeters(0, 0, out var surface))
+            {
+                transform.position = new Vector3(0.0625f, surface + _startHeight, 0.0625f);
+            }
         }
 
         private void Update()

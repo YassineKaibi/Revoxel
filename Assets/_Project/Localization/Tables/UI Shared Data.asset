@@ -31,12 +31,20 @@ MonoBehaviour:
     m_Key: ui.debug.frame_time
     m_Metadata:
       m_Items: []
-  - m_Id: 254466700488704
-    m_Key: ui.debug.chunks
+  - m_Id: 456720267227136
+    m_Key: ui.debug.loaded_chunks
     m_Metadata:
       m_Items: []
-  - m_Id: 254466700488705
-    m_Key: ui.debug.dirty_queue
+  - m_Id: 456720325947392
+    m_Key: ui.debug.chunk_views
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947393
+    m_Key: ui.debug.pending_jobs
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947394
+    m_Key: ui.debug.voxel_memory
     m_Metadata:
       m_Items: []
   m_Metadata:

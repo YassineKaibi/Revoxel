@@ -4,7 +4,8 @@ using UnityEngine.Localization;
 
 namespace Revoxel.UI
 {
-    // Full-screen cover with a localized title and a progress bar while the island loads.
+    // Full-screen cover with a localized title and a progress bar until the world first
+    // settles around the player.
     // IMGUI on purpose, like DebugOverlay: the UI framework is chosen in WP-04.
     public sealed class LoadingScreen : MonoBehaviour
     {
@@ -18,20 +19,31 @@ namespace Revoxel.UI
 
         private string _title = string.Empty;
         private GUIStyle _titleStyle;
+        private bool _settled;
 
-        public bool IsShowing => _world != null && !_world.IsLoaded;
+        public bool IsShowing => _world != null && !_settled && !_world.IsLoaded;
 
         private void OnEnable()
         {
             _titleText.StringChanged += OnTitleChanged;
+            if (_world != null)
+            {
+                _world.FirstSettled += OnFirstSettled;
+            }
         }
 
         private void OnDisable()
         {
             _titleText.StringChanged -= OnTitleChanged;
+            if (_world != null)
+            {
+                _world.FirstSettled -= OnFirstSettled;
+            }
         }
 
         private void OnTitleChanged(string value) => _title = value;
+
+        private void OnFirstSettled() => _settled = true;
 
         private void OnGUI()
         {

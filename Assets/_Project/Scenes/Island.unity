@@ -305,7 +305,7 @@ GameObject:
   - component: {fileID: 1916378604}
   - component: {fileID: 1916378603}
   - component: {fileID: 1916378607}
-  - component: {fileID: 1916378606}
+  - component: {fileID: 1916378608}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -387,19 +387,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1916378606
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1916378602}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 55b49a9d565f071c19bab5b815b89b33, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Revoxel.Game::Revoxel.Core.DebugBlockEditor
-  _testCubeLifetime: 20
 --- !u!114 &1916378607
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -412,9 +399,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 09d99d0a33f8446e985b710b9534b0f4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Revoxel.Game::Revoxel.Core.DebugFlyCamera
+  _world: {fileID: 184413000}
+  _startHeight: 2
   _speed: 12
   _fastMultiplier: 4
   _lookSensitivity: 0.1
+--- !u!114 &1916378608
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1916378602}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 897e42bd38e44e9dca240a83268fd5f5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Revoxel.Game::Revoxel.Core.DebugCarveTool
+  _world: {fileID: 184413000}
+  _fill: {fileID: 11400000, guid: 1a9d7cb49ae7bcd2f8ea7a065e022f83, type: 2}
+  _radius: 0.5
+  _minRadius: 0.125
+  _maxRadius: 2
+  _radiusStep: 0.125
+  _reach: 8
+  _testCubeLifetime: 20
 --- !u!1 &2070516149
 GameObject:
   m_ObjectHideFlags: 0
@@ -471,21 +480,39 @@ MonoBehaviour:
     m_FallbackState: 0
     m_WaitForCompletion: 0
     m_LocalVariables: []
-  _chunksText:
+  _loadedChunksText:
     m_TableReference:
       m_TableCollectionName: UI
     m_TableEntryReference:
       m_KeyId: 0
-      m_Key: ui.debug.chunks
+      m_Key: ui.debug.loaded_chunks
     m_FallbackState: 0
     m_WaitForCompletion: 0
     m_LocalVariables: []
-  _dirtyQueueText:
+  _chunkViewsText:
     m_TableReference:
       m_TableCollectionName: UI
     m_TableEntryReference:
       m_KeyId: 0
-      m_Key: ui.debug.dirty_queue
+      m_Key: ui.debug.chunk_views
+    m_FallbackState: 0
+    m_WaitForCompletion: 0
+    m_LocalVariables: []
+  _pendingJobsText:
+    m_TableReference:
+      m_TableCollectionName: UI
+    m_TableEntryReference:
+      m_KeyId: 0
+      m_Key: ui.debug.pending_jobs
+    m_FallbackState: 0
+    m_WaitForCompletion: 0
+    m_LocalVariables: []
+  _voxelMemoryText:
+    m_TableReference:
+      m_TableCollectionName: UI
+    m_TableEntryReference:
+      m_KeyId: 0
+      m_Key: ui.debug.voxel_memory
     m_FallbackState: 0
     m_WaitForCompletion: 0
     m_LocalVariables: []

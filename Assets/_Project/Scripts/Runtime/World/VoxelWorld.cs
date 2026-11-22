@@ -200,6 +200,23 @@ namespace Revoxel.World
         public bool TryGetChunk(ChunkCoord coord, out Chunk chunk) =>
             _chunks.TryGetValue(coord, out chunk);
 
+        // Generated surface height at a voxel column, meters (edits not included). False
+        // when the terrain settings are missing.
+        public bool TryGetSurfaceHeightMeters(int x, int z, out float meters)
+        {
+            if (_terrainSettings == null)
+            {
+                meters = 0f;
+                return false;
+            }
+
+            var p = _streaming
+                ? _params
+                : TerrainParams.Create(new WorldSeed(_seed), _terrainSettings);
+            meters = TerrainGenerator.SurfaceHeight(p, x, z) * WorldConstants.VoxelSize;
+            return true;
+        }
+
         public bool IsColumnLoaded(int2 column) =>
             _columns.TryGetValue(column, out var c) && c.Stage == ColumnStage.Loaded;
 
