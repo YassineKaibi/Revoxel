@@ -35,6 +35,9 @@ namespace Revoxel.World
         public Mesh.MeshData RenderMesh;
         public Mesh.MeshData CollisionMesh;
 
+        // Coarse detail chunks have no collider: the collision mesh is written empty.
+        public bool SkipCollision;
+
         public void Execute()
         {
             var vertices = new NativeList<VoxelVertex>(1024, Allocator.Temp);
@@ -54,6 +57,11 @@ namespace Revoxel.World
                     {
                         BuildMasks(axis, u, v, sign, d, renderMask, collisionMask);
                         EmitRender(axis, u, v, sign, d, renderMask, ref vertices, ref indices);
+                        if (SkipCollision)
+                        {
+                            continue;
+                        }
+
                         EmitCollision(
                             axis,
                             u,

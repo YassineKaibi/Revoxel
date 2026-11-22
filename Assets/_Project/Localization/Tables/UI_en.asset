@@ -50,6 +50,14 @@ MonoBehaviour:
     m_Localized: Voxel memory
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947395
+    m_Localized: Distant chunks
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947396
+    m_Localized: Distant mesh memory
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []

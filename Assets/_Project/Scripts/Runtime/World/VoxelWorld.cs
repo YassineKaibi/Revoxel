@@ -12,7 +12,9 @@ namespace Revoxel.World
 {
     // Loaded chunks, keyed by chunk coordinate (D-030, D-050), voxel edits, and chunk-column
     // streaming around a focus (PLAN-02 Task 8). Must sit at the world origin: voxel
-    // coordinates are world coordinates.
+    // coordinates are world coordinates. The streamed area is the full-detail square
+    // (D-057, PLAN-03 Task 1) plus one margin column; under DistanceDetail (level 0 of the
+    // detail levels) a column's chunks are drawn only once the detail swaps them in.
     //
     // Frame order. Update, sharing one main-thread budget (D-052): collect finished
     // generation and insert complete columns; unload columns beyond the radius plus
@@ -105,6 +107,8 @@ namespace Revoxel.World
         private bool _streaming;
         private int2 _focusColumn;
         private bool _hasFocusColumn;
+        private int2 _fullCenter;
+        private bool _hasFullCenter;
         private bool _focusMoved;
         private int _columnsInProgress;
         private int _genBusy;
@@ -153,6 +157,64 @@ namespace Revoxel.World
         {
             get => _focus;
             set => _focus = value;
+        }
+
+        // Center (even) and half-width, in columns, of the full-detail square (D-057).
+        public int2 FullDetailCenter => _fullCenter;
+
+        public int FullDetailHalfWidth => _streamingSettings.LoadRadiusChunks;
+
+        public bool HasFullDetailCenter => _hasFullCenter;
+
+        public bool IsStreaming => _streaming;
+
+        // When true (set by DistanceDetail), a column's chunks render only while the column
+        // is shown, and a shown column is never unloaded.
+        internal bool VisibilityManaged { get; set; }
+
+        internal TerrainParams TerrainParameters => _params;
+
+        internal Material Material => _material;
+
+        public bool IsInFullDetail(int2 column) =>
+            _hasFullCenter
+            && math.all(column >= _fullCenter - FullDetailHalfWidth)
+            && math.all(column < _fullCenter + FullDetailHalfWidth);
+
+        // Outside the island: true (nothing to draw). Else loaded, nothing dirty and no mesh
+        // job in flight for the column.
+        internal bool IsColumnReady(int2 column)
+        {
+            if (!ColumnInBounds(column))
+            {
+                return true;
+            }
+
+            return _columns.TryGetValue(column, out var c)
+                && c.Stage == ColumnStage.Loaded
+                && c.Dirty.Count == 0
+                && (_pipeline == null || !_pipeline.HasJobForColumn(column));
+        }
+
+        internal bool IsColumnShown(int2 column) =>
+            _columns.TryGetValue(column, out var c) && c.Shown;
+
+        // Shows or hides the renderers of a loaded column's chunks. No-op when not loaded.
+        internal void SetColumnShown(int2 column, bool shown)
+        {
+            if (!_columns.TryGetValue(column, out var c) || c.Stage != ColumnStage.Loaded)
+            {
+                return;
+            }
+
+            c.Shown = shown;
+            foreach (var chunk in c.Chunks)
+            {
+                if (chunk != null && chunk.View != null)
+                {
+                    chunk.View.Renderer.enabled = shown;
+                }
+            }
         }
 
         public WorldStats Stats =>
@@ -391,6 +453,7 @@ namespace Revoxel.World
             _bounds = null;
             _streaming = false;
             _hasFocusColumn = false;
+            _hasFullCenter = false;
             _columnsInProgress = 0;
             _genBusy = 0;
             _dirtyCount = 0;
@@ -460,6 +523,13 @@ namespace Revoxel.World
             {
                 ScheduleUrgent();
                 _pipeline.ApplyFinished(_views, _applied, _watch, remaining, Time.frameCount);
+                foreach (var chunk in _applied)
+                {
+                    if (chunk.View != null)
+                    {
+                        chunk.View.Renderer.enabled = !VisibilityManaged || chunk.Column.Shown;
+                    }
+                }
             }
 
             using (CollidersMarker.Auto())
@@ -564,7 +634,12 @@ namespace Revoxel.World
                 IsSettled = false;
                 _focusColumn = column;
                 _hasFocusColumn = true;
-                _streamer.ComputeWanted(column, _streamingSettings.LoadRadiusChunks, _wanted);
+            }
+
+            if (ChunkStreamer.RecenterFullDetail(ref _fullCenter, column, _hasFullCenter))
+            {
+                _hasFullCenter = true;
+                _streamer.ComputeWanted(_fullCenter, LoadedHalfWidth, _wanted);
             }
         }
 
@@ -703,7 +778,11 @@ namespace Revoxel.World
             _toRemove.Clear();
             foreach (var column in _columns.Values)
             {
-                if (ShouldUnload(column.Coord) && !column.HasJobsInFlight)
+                if (
+                    ShouldUnload(column.Coord)
+                    && !column.HasJobsInFlight
+                    && !(VisibilityManaged && column.Shown)
+                )
                 {
                     _toRemove.Add(column);
                 }
@@ -1050,12 +1129,15 @@ namespace Revoxel.World
             chunk.View = null;
         }
 
+        // The full-detail square plus the margin column its border chunks mesh against.
+        private int LoadedHalfWidth => _streamingSettings.LoadRadiusChunks + 1;
+
         private bool ShouldUnload(int2 column) =>
-            _hasFocusColumn
+            _hasFullCenter
             && _streamer.ShouldUnload(
                 column,
-                _focusColumn,
-                _streamingSettings.LoadRadiusChunks,
+                _fullCenter,
+                LoadedHalfWidth,
                 _streamingSettings.UnloadHysteresisChunks
             );
 

@@ -13,8 +13,12 @@ namespace Revoxel.World
         private const string Placeholder = "Placeholder value (Q-12).";
 
         [SerializeField]
-        [Tooltip("Chunk columns within this distance of the focus are loaded. " + Placeholder)]
-        private int _loadRadiusChunks = 12;
+        [Tooltip(
+            "Half-width, in columns, of the full-detail square around the focus (even; one "
+                + "margin column is loaded around it, D-057). "
+                + Placeholder
+        )]
+        private int _loadRadiusChunks = 24;
 
         [SerializeField]
         [Tooltip("Columns unload only beyond the load radius plus this. " + Placeholder)]
@@ -58,14 +62,22 @@ namespace Revoxel.World
 
         public bool TryValidate(out string error)
         {
-            if (_loadRadiusChunks < 2 || _unloadHysteresisChunks < 0)
+            if (
+                _loadRadiusChunks < 4
+                || (_loadRadiusChunks & 1) != 0
+                || _unloadHysteresisChunks < 0
+            )
             {
-                error = "Load radius must be at least 2 and hysteresis not negative.";
+                error = "Load radius must be even and at least 4, hysteresis not negative.";
             }
-            else if (_colliderRadiusChunks < 0 || _colliderRadiusChunks >= _loadRadiusChunks - 1)
+            else if (
+                _colliderRadiusChunks < 0
+                || _colliderRadiusChunks >= _loadRadiusChunks - ChunkStreamer.RecenterDistance
+            )
             {
-                // Colliders need meshed chunks, and the outer ring of columns is never meshed.
-                error = "Collider radius must be 0 to load radius - 2.";
+                // Colliders need meshed chunks inside the full-detail square, whose center
+                // may be RecenterDistance columns from the focus.
+                error = "Collider radius must be 0 to load radius - 3.";
             }
             else if (_maxGenerationJobsInFlight < 1 || _maxMeshJobsInFlight < 1)
             {

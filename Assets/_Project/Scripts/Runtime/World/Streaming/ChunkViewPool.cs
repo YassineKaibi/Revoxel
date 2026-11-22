@@ -9,6 +9,7 @@ namespace Revoxel.World
     {
         public GameObject GameObject;
         public MeshFilter Filter;
+        public MeshRenderer Renderer;
         public MeshCollider Collider;
         public Mesh RenderMesh;
         public Mesh CollisionMesh;
@@ -38,6 +39,7 @@ namespace Revoxel.World
             var origin = Coords.VoxelToWorldPosition(Coords.ChunkOrigin(coord));
             view.GameObject.transform.position = new Vector3(origin.x, origin.y, origin.z);
             view.GameObject.SetActive(true);
+            view.Renderer.enabled = true;
             ActiveCount++;
             return view;
         }
@@ -77,7 +79,8 @@ namespace Revoxel.World
                 RenderMesh = new Mesh { name = "ChunkRender" },
                 CollisionMesh = new Mesh { name = "ChunkCollision" },
             };
-            go.AddComponent<MeshRenderer>().sharedMaterial = _material;
+            view.Renderer = go.AddComponent<MeshRenderer>();
+            view.Renderer.sharedMaterial = _material;
             view.Filter.sharedMesh = view.RenderMesh;
             _all.Add(view);
             return view;

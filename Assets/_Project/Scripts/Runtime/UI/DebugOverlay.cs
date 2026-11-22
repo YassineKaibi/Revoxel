@@ -8,7 +8,8 @@ namespace Revoxel.UI
     // Debug-only overlay in Island.unity: one localized line and a button that
     // switches the selected locale between the two available ones (fr, en), plus the
     // world counters (frame time, loaded chunks, chunk views, pending jobs, voxel memory;
-    // D-045, D-046, D-054). IMGUI on purpose, so the UI framework choice stays open.
+    // D-045, D-046, D-054) and the distance detail counters (distant chunks, distant mesh
+    // memory; PLAN-03 Task 5). IMGUI on purpose, so the UI framework choice stays open.
     public sealed class DebugOverlay : MonoBehaviour
     {
         public const string TableName = "UI";
@@ -19,6 +20,8 @@ namespace Revoxel.UI
         public const string ChunkViewsKey = "ui.debug.chunk_views";
         public const string PendingJobsKey = "ui.debug.pending_jobs";
         public const string VoxelMemoryKey = "ui.debug.voxel_memory";
+        public const string DetailChunksKey = "ui.debug.detail_chunks";
+        public const string DetailMemoryKey = "ui.debug.detail_memory";
 
         // The counters text is rebuilt at this interval, not every frame.
         private const float CountersRefreshSeconds = 0.25f;
@@ -51,13 +54,24 @@ namespace Revoxel.UI
         private LocalizedString _voxelMemoryText = new LocalizedString(TableName, VoxelMemoryKey);
 
         [SerializeField]
+        private LocalizedString _detailChunksText = new LocalizedString(TableName, DetailChunksKey);
+
+        [SerializeField]
+        private LocalizedString _detailMemoryText = new LocalizedString(TableName, DetailMemoryKey);
+
+        [SerializeField]
         private VoxelWorld _world;
+
+        [SerializeField]
+        private DistanceDetail _detail;
 
         private string _frameTimeLabel = string.Empty;
         private string _loadedChunksLabel = string.Empty;
         private string _chunkViewsLabel = string.Empty;
         private string _pendingJobsLabel = string.Empty;
         private string _voxelMemoryLabel = string.Empty;
+        private string _detailChunksLabel = string.Empty;
+        private string _detailMemoryLabel = string.Empty;
         private float _smoothedFrameTime;
         private float _nextCountersRefresh;
 #endif
@@ -92,6 +106,8 @@ namespace Revoxel.UI
             _chunkViewsText.StringChanged += OnChunkViewsChanged;
             _pendingJobsText.StringChanged += OnPendingJobsChanged;
             _voxelMemoryText.StringChanged += OnVoxelMemoryChanged;
+            _detailChunksText.StringChanged += OnDetailChunksChanged;
+            _detailMemoryText.StringChanged += OnDetailMemoryChanged;
 #endif
         }
 
@@ -105,6 +121,8 @@ namespace Revoxel.UI
             _chunkViewsText.StringChanged -= OnChunkViewsChanged;
             _pendingJobsText.StringChanged -= OnPendingJobsChanged;
             _voxelMemoryText.StringChanged -= OnVoxelMemoryChanged;
+            _detailChunksText.StringChanged -= OnDetailChunksChanged;
+            _detailMemoryText.StringChanged -= OnDetailMemoryChanged;
 #endif
         }
 
@@ -123,6 +141,10 @@ namespace Revoxel.UI
 
         private void OnVoxelMemoryChanged(string value) => _voxelMemoryLabel = value;
 
+        private void OnDetailChunksChanged(string value) => _detailChunksLabel = value;
+
+        private void OnDetailMemoryChanged(string value) => _detailMemoryLabel = value;
+
         private void Update()
         {
             var frameTime = Time.unscaledDeltaTime * 1000f;
@@ -134,12 +156,16 @@ namespace Revoxel.UI
 
             _nextCountersRefresh = Time.unscaledTime + CountersRefreshSeconds;
             var stats = _world.Stats;
+            var detail = _detail != null ? _detail.Stats : default;
+            var pending = stats.PendingGeneration + stats.PendingMeshing + detail.PendingJobs;
             _counters =
                 $"{_frameTimeLabel}: {_smoothedFrameTime:F1} ms\n"
                 + $"{_loadedChunksLabel}: {stats.LoadedChunks}\n"
                 + $"{_chunkViewsLabel}: {stats.ViewCount}\n"
-                + $"{_pendingJobsLabel}: {stats.PendingGeneration + stats.PendingMeshing}\n"
-                + $"{_voxelMemoryLabel}: {stats.VoxelMemoryBytes / BytesPerMiB:F1} MiB";
+                + $"{_pendingJobsLabel}: {pending}\n"
+                + $"{_voxelMemoryLabel}: {stats.VoxelMemoryBytes / BytesPerMiB:F1} MiB\n"
+                + $"{_detailChunksLabel}: {detail.Views}\n"
+                + $"{_detailMemoryLabel}: {detail.MeshBytes / BytesPerMiB:F1} MiB";
         }
 #endif
 

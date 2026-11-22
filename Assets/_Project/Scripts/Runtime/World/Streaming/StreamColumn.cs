@@ -30,6 +30,9 @@ namespace Revoxel.World
         public int HeightSlot = -1;
         public int MixedInFlight;
 
+        // Drawn (under DistanceDetail; always true in effect otherwise).
+        public bool Shown;
+
         public bool HasJobsInFlight => HeightSlot >= 0 || MixedInFlight > 0;
 
         public void Reset(int2 coord, ColumnStage stage)
@@ -38,6 +41,7 @@ namespace Revoxel.World
             Stage = stage;
             HeightSlot = -1;
             MixedInFlight = 0;
+            Shown = false;
             MixedQueue.Clear();
             Dirty.Clear();
             for (var i = 0; i < Chunks.Length; i++)

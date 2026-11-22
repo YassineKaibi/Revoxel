@@ -68,6 +68,8 @@ namespace Revoxel.Tests.EditMode
                 Revoxel.UI.DebugOverlay.ChunkViewsKey,
                 Revoxel.UI.DebugOverlay.PendingJobsKey,
                 Revoxel.UI.DebugOverlay.VoxelMemoryKey,
+                Revoxel.UI.DebugOverlay.DetailChunksKey,
+                Revoxel.UI.DebugOverlay.DetailMemoryKey,
             };
 
             foreach (var key in keys)

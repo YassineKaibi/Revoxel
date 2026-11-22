@@ -26,5 +26,9 @@ namespace Revoxel.World
 
         // Voxel ids are ushort; a lookup table indexed by id has this many entries.
         public const int MaxVoxelTypes = 1024;
+
+        // Coarse detail levels L = 1 to 7 at most: a level-L chunk column holds
+        // ChunksY >> L chunks (D-055, D-057).
+        public const int MaxDetailLevels = 7;
     }
 }

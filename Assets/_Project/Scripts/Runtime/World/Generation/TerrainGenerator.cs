@@ -169,29 +169,152 @@ namespace Revoxel.World
                 for (var y = 0; y < WorldConstants.ChunkSize; y++)
                 {
                     var wy = origin.y + y;
+                    var id =
+                        wy < h ? MaterialAt(p, wy, h, soil, sandy)
+                        : wy < p.SeaLevel ? p.Water
+                        : VoxelId.Air.Value;
+                    dense[Coords.LocalIndex(x, y, z)] = id;
+                }
+            }
+        }
+
+        // The material of a solid voxel at height y of a column with this surface, soil depth
+        // and sandiness: grass on top, dirt below it, stone under the soil, sand near the sea.
+        public static ushort MaterialAt(
+            in TerrainParams p,
+            int y,
+            int surface,
+            int soil,
+            bool sandy
+        )
+        {
+            var depth = surface - 1 - y;
+            if (depth >= soil)
+            {
+                return p.Stone;
+            }
+
+            if (sandy)
+            {
+                return p.Sand;
+            }
+
+            return depth == 0 ? p.Grass : p.Dirt;
+        }
+
+        // Coarse levels (D-055 to D-057, PLAN-03 Task 2). A level-L chunk is 32^3 coarse
+        // voxels of s = 2^L voxels each; its coordinate is in level-L chunk units. A coarse
+        // column samples the terrain at its center voxel column (origin + s / 2); a coarse
+        // voxel at height y0 is solid when y0 + s / 2 is below the surface there, and takes
+        // the material of the highest solid voxel it holds, the surface voxel for the top
+        // solid coarse voxel of its column (D-056). Non-solid coarse voxels are water below
+        // sea level. Level 0 gives exactly the full-resolution voxels.
+
+        // Heights of the padded coarse columns plus one more ring, for slopes.
+        public const int DetailHeightGridSize = WorldConstants.PaddedSize + 2;
+        public const int DetailHeightGridCount = DetailHeightGridSize * DetailHeightGridSize;
+
+        // Lowest and highest floored surface over the cell's 32 x 32 coarse column centers,
+        // widened by one coarse voxel each way (voxel units).
+        public static int2 DetailHeightRange(in TerrainParams p, int2 cell, int level)
+        {
+            var s = 1 << level;
+            var origin = cell * (WorldConstants.ChunkSize * s) + (s >> 1);
+            var range = new int2(int.MaxValue, int.MinValue);
+            for (var z = 0; z < WorldConstants.ChunkSize; z++)
+            for (var x = 0; x < WorldConstants.ChunkSize; x++)
+            {
+                var h = SurfaceHeight(p, origin.x + x * s, origin.y + z * s);
+                range = new int2(math.min(range.x, h), math.max(range.y, h));
+            }
+
+            return range + new int2(-s, s);
+        }
+
+        // False when the chunk can show nothing: above both the highest surface and sea
+        // level, water with water above it, or more than wallDepth coarse voxels (plus the
+        // deepest soil) below the lowest surface. Chunks just below the surface are meshed
+        // for their side walls.
+        public static bool DetailChunkNeedsMesh(
+            in TerrainParams p,
+            int2 heightRange,
+            int cy,
+            int level,
+            int wallDepth
+        )
+        {
+            var s = 1 << level;
+            var yMin = cy * WorldConstants.ChunkSize * s;
+            var yMax = yMin + WorldConstants.ChunkSize * s - 1;
+            if (yMin >= math.max(heightRange.y, p.SeaLevel))
+            {
+                return false;
+            }
+
+            if (yMin >= heightRange.y && yMax < p.SeaLevel)
+            {
+                // Water: only the chunk under the sea surface shows its top.
+                return yMax + 1 + (s >> 1) >= p.SeaLevel;
+            }
+
+            return yMax >= heightRange.x - p.MaxSoil - wallDepth * s;
+        }
+
+        // Fills the 34^3 meshing input of a level-L chunk straight from the generator. With
+        // sideWalls, solid cells of the x and z padding become Air, so the chunk draws walls
+        // on its four sides that close any gap toward another level (D-057). heights is a
+        // DetailHeightGridCount scratch.
+        public static void FillDetailPadded(
+            in TerrainParams p,
+            int level,
+            ChunkCoord coord,
+            bool sideWalls,
+            NativeArray<float> heights,
+            NativeArray<ushort> padded
+        )
+        {
+            const int size = WorldConstants.ChunkSize;
+            const int grid = DetailHeightGridSize;
+            var s = 1 << level;
+            var half = s >> 1;
+            var origin = coord.Value * (size * s);
+            for (var z = -2; z <= size + 1; z++)
+            for (var x = -2; x <= size + 1; x++)
+            {
+                heights[(x + 2) + grid * (z + 2)] = SmoothHeight(
+                    p,
+                    origin.x + x * s + half,
+                    origin.z + z * s + half
+                );
+            }
+
+            for (var z = -1; z <= size; z++)
+            for (var x = -1; x <= size; x++)
+            {
+                var i = (x + 2) + grid * (z + 2);
+                var h = (int)math.floor(heights[i]);
+                var slope =
+                    Slope(heights[i + 1], heights[i - 1], heights[i + grid], heights[i - grid]) / s;
+                var soil = SoilDepth(p, origin.x + x * s + half, origin.z + z * s + half, slope);
+                var sandy = h <= p.SeaLevel + p.SandAbove;
+                var wall = sideWalls && (x < 0 || x >= size || z < 0 || z >= size);
+                for (var y = -1; y <= size; y++)
+                {
+                    var y0 = origin.y + y * s;
                     ushort id;
-                    if (wy < h)
+                    if (y0 + half < h)
                     {
-                        var depth = h - 1 - wy;
-                        if (depth >= soil)
-                        {
-                            id = p.Stone;
-                        }
-                        else if (sandy)
-                        {
-                            id = p.Sand;
-                        }
-                        else
-                        {
-                            id = depth == 0 ? p.Grass : p.Dirt;
-                        }
+                        var top = y0 + s + half >= h;
+                        id = wall
+                            ? VoxelId.Air.Value
+                            : MaterialAt(p, top ? h - 1 : y0 + s - 1, h, soil, sandy);
                     }
                     else
                     {
-                        id = wy < p.SeaLevel ? p.Water : VoxelId.Air.Value;
+                        id = y0 + half < p.SeaLevel ? p.Water : VoxelId.Air.Value;
                     }
 
-                    dense[Coords.LocalIndex(x, y, z)] = id;
+                    padded[Coords.PaddedIndex(x, y, z)] = id;
                 }
             }
         }
