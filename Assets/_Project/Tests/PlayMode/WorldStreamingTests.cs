@@ -44,6 +44,7 @@ namespace Revoxel.Tests.PlayMode
         [UnityTest]
         public IEnumerator World_Streaming_LoadsAroundFocusAndUnloadsBehind()
         {
+            yield return UnloadAllScenes();
             var leaksBefore = UnsafeUtility.CheckForLeaks();
             VoxelWorld world = null;
             yield return LoadIslandWithFocus(w => world = w);
@@ -110,6 +111,7 @@ namespace Revoxel.Tests.PlayMode
         [UnityTest]
         public IEnumerator World_DestroyWhileStreaming_NoLeaks()
         {
+            yield return UnloadAllScenes();
             var leaksBefore = UnsafeUtility.CheckForLeaks();
             VoxelWorld world = null;
             yield return LoadIslandWithFocus(w => world = w);
@@ -218,6 +220,26 @@ namespace Revoxel.Tests.PlayMode
             Assert.That(restoredLeft.point.y, Is.EqualTo(beforeLeft.point.y).Within(1e-3f));
             Assert.That(restoredRight.point.y, Is.EqualTo(beforeRight.point.y).Within(1e-3f));
             Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
+        }
+
+        // CheckForLeaks resets Unity's leak tracker; reading it while a previous test's world
+        // still has jobs allocating on worker threads reports some of those allocations as
+        // leaks. The baseline is taken with no world alive.
+        private static IEnumerator UnloadAllScenes()
+        {
+            var empty = SceneManager.CreateScene("LeakBaseline");
+            SceneManager.SetActiveScene(empty);
+            for (var i = SceneManager.sceneCount - 1; i >= 0; i--)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                if (scene != empty)
+                {
+                    yield return SceneManager.UnloadSceneAsync(scene);
+                }
+            }
+
+            yield return null;
+            yield return null;
         }
 
         private IEnumerator LoadIslandWithFocus(System.Action<VoxelWorld> found)
