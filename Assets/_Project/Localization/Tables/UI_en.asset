@@ -26,6 +26,30 @@ MonoBehaviour:
     m_Localized: Switch language
     m_Metadata:
       m_Items: []
+  - m_Id: 254466679517184
+    m_Localized: "Loading\u2026"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466696294400
+    m_Localized: Frame time
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947392
+    m_Localized: Chunk views
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720267227136
+    m_Localized: Loaded chunks
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947393
+    m_Localized: Pending jobs
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947394
+    m_Localized: Voxel memory
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []

@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d4c93a3e53ac8b5708c0292411890047, type: 3}
+  m_Name: Placeholder_TerrainSettings
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.TerrainSettings
+  _seaLevelMeters: 64
+  _islandRadiusMeters: 3600
+  _coastFalloffMeters: 400
+  _landHeightMeters: 120
+  _octaves: 4
+  _baseScaleMeters: 600
+  _gain: 0.5
+  _lacunarity: 2
+  _soilMinMeters: 0.25
+  _soilMaxMeters: 2
+  _soilScaleMeters: 40
+  _soilZeroSlope: 1.5
+  _sandAboveSeaMeters: 1.5
+  _water: {fileID: 11400000, guid: 6a560c56436a6b0f7a1bb0714ce986f2, type: 2}
+  _sand: {fileID: 11400000, guid: 7b705c427936edf6f87ab1d2a5f840d7, type: 2}
+  _dirt: {fileID: 11400000, guid: 01523d4d808c5cc64aec805a67294d86, type: 2}
+  _grass: {fileID: 11400000, guid: 72d4d3c87028bf213a1190377e49077e, type: 2}
+  _stone: {fileID: 11400000, guid: 435ae967e5080d6948829493a5698749, type: 2}

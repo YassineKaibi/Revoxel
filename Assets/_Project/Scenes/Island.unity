@@ -119,6 +119,83 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &184412998
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 184413001}
+  - component: {fileID: 184413000}
+  - component: {fileID: 184412999}
+  m_Layer: 0
+  m_Name: VoxelWorld
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &184412999
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 184412998}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d03465196f0aaf888b73a8b718460f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Revoxel.Game::Revoxel.UI.LoadingScreen
+  _world: {fileID: 184413000}
+  _titleText:
+    m_TableReference:
+      m_TableCollectionName: UI
+    m_TableEntryReference:
+      m_KeyId: 0
+      m_Key: ui.loading.title
+    m_FallbackState: 0
+    m_WaitForCompletion: 0
+    m_LocalVariables: []
+  references:
+    version: 2
+    RefIds: []
+--- !u!114 &184413000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 184412998}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bfce2c131592342fdb98929e2b25fb47, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.VoxelWorld
+  _registry: {fileID: 11400000, guid: 40f0d44ede27da4d3949d6be2ca120e8, type: 2}
+  _terrainSettings: {fileID: 11400000, guid: 5e066cb4ec23114c0896415a93f2096d, type: 2}
+  _streamingSettings: {fileID: 11400000, guid: 4f879657e5aeb148eaf550d65c83fc85, type: 2}
+  _renderSettings: {fileID: 11400000, guid: 7f956df36c6c8da7e9ff0515441f9721, type: 2}
+  _material: {fileID: 2100000, guid: cae77fb9388548f67bdc82f979b57c6e, type: 2}
+  _seed: 42
+  _focus: {fileID: 1916378605}
+--- !u!4 &184413001
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 184412998}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1064523988
 GameObject:
   m_ObjectHideFlags: 0
@@ -227,6 +304,9 @@ GameObject:
   - component: {fileID: 1916378605}
   - component: {fileID: 1916378604}
   - component: {fileID: 1916378603}
+  - component: {fileID: 1916378607}
+  - component: {fileID: 1916378608}
+  - component: {fileID: 1916378609}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -255,7 +335,7 @@ Camera:
   m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
-  m_FOVAxisMode: 0
+  m_FOVAxisMode: 1
   m_Iso: 200
   m_ShutterSpeed: 0.005
   m_Aperture: 16
@@ -273,9 +353,9 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.3
-  far clip plane: 1000
-  field of view: 60
+  near clip plane: 0.1
+  far clip plane: 600
+  field of view: 58.71551
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -301,13 +381,75 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1916378602}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: -10}
+  m_LocalRotation: {x: 0.34202015, y: 0, z: 0, w: 0.9396927}
+  m_LocalPosition: {x: 128, y: 110, z: -40}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1916378607
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1916378602}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09d99d0a33f8446e985b710b9534b0f4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Revoxel.Game::Revoxel.Core.DebugFlyCamera
+  _world: {fileID: 184413000}
+  _startHeight: 2
+  _speed: 12
+  _fastMultiplier: 4
+  _lookSensitivity: 0.1
+  _horizontalFov: 90
+  _bodyHeight: 1.8
+  _eyeHeight: 1.7
+  _bodyRadius: 0.3
+  _stepHeight: 0.3
+  _walkSpeed: 4.5
+  _runMultiplier: 1.5
+  _jumpHeight: 1
+--- !u!114 &1916378608
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1916378602}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 897e42bd38e44e9dca240a83268fd5f5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Revoxel.Game::Revoxel.Core.DebugCarveTool
+  _world: {fileID: 184413000}
+  _fill: {fileID: 11400000, guid: 1a9d7cb49ae7bcd2f8ea7a065e022f83, type: 2}
+  _radius: 0.5
+  _minRadius: 0.125
+  _maxRadius: 2
+  _radiusStep: 0.125
+  _reach: 8
+  _testCubeLifetime: 20
+--- !u!114 &1916378609
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1916378602}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e52cec0b32647b9916aefdae9fa7e1c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Revoxel.Game::Revoxel.Core.DebugScaleFigure
+  _world: {fileID: 184413000}
+  _height: 1.8
+  _width: 0.5
+  _eyeHeight: 1.7
+  _reach: 64
 --- !u!1 &2070516149
 GameObject:
   m_ObjectHideFlags: 0
@@ -355,6 +497,52 @@ MonoBehaviour:
     m_FallbackState: 0
     m_WaitForCompletion: 0
     m_LocalVariables: []
+  _frameTimeText:
+    m_TableReference:
+      m_TableCollectionName: UI
+    m_TableEntryReference:
+      m_KeyId: 0
+      m_Key: ui.debug.frame_time
+    m_FallbackState: 0
+    m_WaitForCompletion: 0
+    m_LocalVariables: []
+  _loadedChunksText:
+    m_TableReference:
+      m_TableCollectionName: UI
+    m_TableEntryReference:
+      m_KeyId: 0
+      m_Key: ui.debug.loaded_chunks
+    m_FallbackState: 0
+    m_WaitForCompletion: 0
+    m_LocalVariables: []
+  _chunkViewsText:
+    m_TableReference:
+      m_TableCollectionName: UI
+    m_TableEntryReference:
+      m_KeyId: 0
+      m_Key: ui.debug.chunk_views
+    m_FallbackState: 0
+    m_WaitForCompletion: 0
+    m_LocalVariables: []
+  _pendingJobsText:
+    m_TableReference:
+      m_TableCollectionName: UI
+    m_TableEntryReference:
+      m_KeyId: 0
+      m_Key: ui.debug.pending_jobs
+    m_FallbackState: 0
+    m_WaitForCompletion: 0
+    m_LocalVariables: []
+  _voxelMemoryText:
+    m_TableReference:
+      m_TableCollectionName: UI
+    m_TableEntryReference:
+      m_KeyId: 0
+      m_Key: ui.debug.voxel_memory
+    m_FallbackState: 0
+    m_WaitForCompletion: 0
+    m_LocalVariables: []
+  _world: {fileID: 184413000}
   references:
     version: 2
     RefIds: []
@@ -380,3 +568,4 @@ SceneRoots:
   - {fileID: 1916378605}
   - {fileID: 1064523990}
   - {fileID: 2070516151}
+  - {fileID: 184413001}

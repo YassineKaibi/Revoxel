@@ -23,6 +23,30 @@ MonoBehaviour:
     m_Key: ui.debug.switch_language
     m_Metadata:
       m_Items: []
+  - m_Id: 254466679517184
+    m_Key: ui.loading.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 254466696294400
+    m_Key: ui.debug.frame_time
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720267227136
+    m_Key: ui.debug.loaded_chunks
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947392
+    m_Key: ui.debug.chunk_views
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947393
+    m_Key: ui.debug.pending_jobs
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947394
+    m_Key: ui.debug.voxel_memory
+    m_Metadata:
+      m_Items: []
   m_Metadata:
     m_Items: []
   m_KeyGenerator:

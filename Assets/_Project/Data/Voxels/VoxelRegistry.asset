@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3328b7a5609f2a40d8ee34bc15861303, type: 3}
+  m_Name: VoxelRegistry
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.VoxelRegistry
+  _types:
+  - {fileID: 11400000, guid: 51fdf7ca4202373c68e8054850e1a66e, type: 2}
+  - {fileID: 11400000, guid: 6a560c56436a6b0f7a1bb0714ce986f2, type: 2}
+  - {fileID: 11400000, guid: 7b705c427936edf6f87ab1d2a5f840d7, type: 2}
+  - {fileID: 11400000, guid: 01523d4d808c5cc64aec805a67294d86, type: 2}
+  - {fileID: 11400000, guid: 72d4d3c87028bf213a1190377e49077e, type: 2}
+  - {fileID: 11400000, guid: 435ae967e5080d6948829493a5698749, type: 2}
+  - {fileID: 11400000, guid: 7c2853e70f8db85c88c5bf2d1d7c36b9, type: 2}
+  - {fileID: 11400000, guid: b51e74abea74a9b53aef9996ddf381f9, type: 2}
+  - {fileID: 11400000, guid: 593bd1de71f7f1926b30c527953728b6, type: 2}
+  - {fileID: 11400000, guid: 1a9d7cb49ae7bcd2f8ea7a065e022f83, type: 2}

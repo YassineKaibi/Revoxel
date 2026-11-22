@@ -54,5 +54,30 @@ namespace Revoxel.Tests.EditMode
 
             Assert.That(problems, Is.Empty, string.Join("\n", problems));
         }
+
+        [Test]
+        public void Localization_DebugOverlayKeys_ExistAndRetiredKeysAreGone()
+        {
+            var shared = LocalizationEditorSettings
+                .GetStringTableCollection(Revoxel.UI.DebugOverlay.TableName)
+                .SharedData;
+            var keys = new[]
+            {
+                Revoxel.UI.DebugOverlay.FrameTimeKey,
+                Revoxel.UI.DebugOverlay.LoadedChunksKey,
+                Revoxel.UI.DebugOverlay.ChunkViewsKey,
+                Revoxel.UI.DebugOverlay.PendingJobsKey,
+                Revoxel.UI.DebugOverlay.VoxelMemoryKey,
+            };
+
+            foreach (var key in keys)
+            {
+                Assert.That(shared.Contains(key), Is.True, key);
+            }
+
+            // Retired by D-054.
+            Assert.That(shared.Contains("ui.debug.chunks"), Is.False);
+            Assert.That(shared.Contains("ui.debug.dirty_queue"), Is.False);
+        }
     }
 }
