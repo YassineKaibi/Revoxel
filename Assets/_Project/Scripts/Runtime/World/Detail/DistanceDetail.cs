@@ -15,8 +15,11 @@ namespace Revoxel.World
     // cell (level L displays its square minus the finer one) runs a height job, then a fill
     // job chained to a GreedyMeshJob for each chunk that can show something. Meshes go to
     // hidden views. The swap step shows a cell, or a full-resolution column, only once
-    // everything covering the same area is ready, and hides the old cover in the same
-    // frame, so no area once drawn goes empty and none is drawn twice.
+    // what replaces it is ready, and hides the old cover in the same frame, so no area once
+    // drawn goes empty and none is drawn twice. A coarse cell inside finer squares splits
+    // into its four children one level at a time (creating transitional children the rings
+    // do not display), so detail near the focus arrives within frames, not when the whole
+    // coarse area is done.
     //
     // Frame order, one main-thread budget: Update (after VoxelWorld): rings, collect
     // finished jobs, schedule nearest first. LateUpdate (after VoxelWorld applied its
@@ -378,6 +381,10 @@ namespace Revoxel.World
             }
         }
 
+        private static readonly Comparer<DetailCell> ByDistance = Comparer<DetailCell>.Create(
+            CompareByDistance
+        );
+
         private static int CompareByDistance(DetailCell a, DetailCell b) =>
             a.SortKey.CompareTo(b.SortKey);
 
@@ -738,73 +745,92 @@ namespace Revoxel.World
 
             if (level > 0 && _rings.InRegion(level - 1, coord << 1))
             {
-                // Inside the finer square: wait until the finer cover is ready.
-                if (!CoveredByReady(level, coord))
+                // Inside the finer square: split into the four children one level finer as
+                // soon as they are ready; children that are themselves inside the next finer
+                // square are transitional and split again (D-057, amended 2026-11-22).
+                if (!ChildrenReady(level, coord))
                 {
                     return false;
                 }
 
-                ShowCover(level, coord);
+                ShowChildren(level, coord);
             }
 
             Hide(level, coord);
             return true;
         }
 
-        // Whether the area of a cell is covered by ready wanted cells or columns of finer
-        // levels.
-        private bool CoveredByReady(int level, int2 coord)
+        // Whether the four children of a cell, one level finer, are ready; missing
+        // children are created (transitional when the rings do not display them).
+        private bool ChildrenReady(int level, int2 coord)
         {
+            var below = level - 1;
+            var ready = true;
             var child = coord << 1;
             for (var dz = 0; dz <= 1; dz++)
             for (var dx = 0; dx <= 1; dx++)
             {
                 var c = child + new int2(dx, dz);
-                var below = level - 1;
                 if (below == 0)
                 {
-                    if (!_world.IsColumnReady(c))
-                    {
-                        return false;
-                    }
-                }
-                else if (_rings.IsDisplayed(below, c))
-                {
-                    if (
-                        !_cells[below].TryGetValue(c, out var cell)
-                        || cell.State != DetailCellState.Ready
-                    )
-                    {
-                        return false;
-                    }
-                }
-                else if (!CoveredByReady(below, c))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private void ShowCover(int level, int2 coord)
-        {
-            var child = coord << 1;
-            for (var dz = 0; dz <= 1; dz++)
-            for (var dx = 0; dx <= 1; dx++)
-            {
-                var c = child + new int2(dx, dz);
-                var below = level - 1;
-                if (below == 0 || _rings.IsDisplayed(below, c))
-                {
-                    if (!IsShown(below, c))
-                    {
-                        Show(below, c);
-                    }
+                    ready &= _world.IsColumnReady(c);
                 }
                 else
                 {
-                    ShowCover(below, c);
+                    ready &= NeedCell(below, c).State == DetailCellState.Ready;
+                }
+            }
+
+            return ready;
+        }
+
+        // The cell at a level and coordinate, kept wanted; created and queued nearest first
+        // when missing.
+        private DetailCell NeedCell(int level, int2 coord)
+        {
+            var cells = _cells[level];
+            if (!cells.TryGetValue(coord, out var cell))
+            {
+                cell = _cellPool.Count > 0 ? _cellPool.Pop() : new DetailCell();
+                cell.Reset(level, coord);
+                cells.Add(coord, cell);
+            }
+            else if (cell.Wanted)
+            {
+                return cell;
+            }
+
+            cell.Wanted = true;
+            if (cell.State != DetailCellState.Ready)
+            {
+                var d = ((float2)coord + 0.5f) * (1 << level) - (float2)_rings.Center(0);
+                cell.SortKey = math.lengthsq(d);
+                var index = _work.BinarySearch(cell, ByDistance);
+                _work.Insert(index < 0 ? ~index : index, cell);
+            }
+
+            return cell;
+        }
+
+        // Shows the four children; transitional ones (not displayed by the rings) are shown
+        // as no longer wanted, so they retire and split in turn.
+        private void ShowChildren(int level, int2 coord)
+        {
+            var below = level - 1;
+            var child = coord << 1;
+            for (var dz = 0; dz <= 1; dz++)
+            for (var dx = 0; dx <= 1; dx++)
+            {
+                var c = child + new int2(dx, dz);
+                if (!IsShown(below, c))
+                {
+                    Show(below, c);
+                }
+
+                if (below > 0 && !_rings.IsDisplayed(below, c))
+                {
+                    _cells[below][c].Wanted = false;
+                    _retiring.Add(new int3(c, below));
                 }
             }
         }

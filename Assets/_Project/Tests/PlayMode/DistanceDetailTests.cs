@@ -123,6 +123,59 @@ namespace Revoxel.Tests.PlayMode
             Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
         }
 
+        // After a move, the column under the focus is drawn at full resolution soon after it
+        // is ready: coarse cells refine one level at a time instead of waiting for their
+        // whole area (about 160 frames before that change, 10 to 30 after it, in batch mode).
+        [UnityTest]
+        public IEnumerator Detail_AfterMove_FocusColumnShowsSoonAfterReady()
+        {
+            const int MaxFramesAfterReady = 60;
+            VoxelWorld world = null;
+            DistanceDetail detail = null;
+            yield return LoadIsland((w, d) => (world, detail) = (w, d));
+            yield return WaitFor(() => detail.IsSettled, "the distance detail to settle");
+
+            foreach (var move in new[] { 50, -50, 120 })
+            {
+                var column =
+                    Coords.ColumnOf(
+                        Coords.ChunkOf(Coords.WorldPositionToVoxel(_focus.transform.position))
+                    ) + new int2(move, 0);
+                _focus.transform.position = new Vector3(
+                    (column.x + 0.5f) * ColumnMeters,
+                    100f,
+                    (column.y + 0.5f) * ColumnMeters
+                );
+                var readyFrame = -1;
+                var frame = 0;
+                var deadline = Time.realtimeSinceStartup + TimeoutSeconds;
+                while (!world.IsColumnShown(column))
+                {
+                    yield return null;
+                    frame++;
+                    if (readyFrame < 0 && world.IsColumnReady(column))
+                    {
+                        readyFrame = frame;
+                    }
+
+                    if (Time.realtimeSinceStartup > deadline)
+                    {
+                        Assert.Fail($"Timed out waiting for column {column} to show");
+                    }
+                }
+
+                var waited = frame - math.max(readyFrame, 0);
+                Assert.That(
+                    waited,
+                    Is.LessThanOrEqualTo(MaxFramesAfterReady),
+                    $"move {move}: column {column} ready at frame {readyFrame}, shown at {frame}"
+                );
+                yield return WaitFor(() => detail.IsSettled, "the detail to settle after a move");
+            }
+
+            Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
+        }
+
         [UnityTest]
         public IEnumerator Detail_DestroyWhileGenerating_NoLeaks()
         {
