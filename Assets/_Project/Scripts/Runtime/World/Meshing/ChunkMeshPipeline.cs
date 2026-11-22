@@ -18,6 +18,9 @@ namespace Revoxel.World
         private const MeshUpdateFlags ApplyFlags =
             MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices;
 
+        // Unity frees writable mesh data allocations after 4 frames, with a warning.
+        private const int MaxResultAgeFrames = 3;
+
         private readonly List<Slot> _slots = new List<Slot>();
         private readonly Mesh[] _targets = new Mesh[2];
         private NativeArray<VoxelRenderData> _renderData;
@@ -46,7 +49,7 @@ namespace Revoxel.World
 
         // Pads the chunk from Neighborhood and schedules its mesh job. Urgent chunks (edits)
         // may grow the slots beyond the capacity and are completed by the next ApplyFinished.
-        public void Schedule(Chunk chunk, bool urgent)
+        public void Schedule(Chunk chunk, bool urgent, int frame)
         {
             var slot = FreeSlot();
             if (slot == null)
@@ -70,6 +73,7 @@ namespace Revoxel.World
             slot.Chunk = chunk;
             slot.Version = chunk.Version;
             slot.Urgent = urgent;
+            slot.ScheduledFrame = frame;
             slot.Busy = true;
             Busy++;
             slot.Handle = new GreedyMeshJob
@@ -83,15 +87,16 @@ namespace Revoxel.World
             }.Schedule();
         }
 
-        // Applies finished results (urgent ones are completed first, waiting if needed)
-        // until the budget runs out; at least one result is applied per call. Stale results
-        // (chunk changed, unloaded or reused since scheduling) are dropped. Chunks whose
-        // mesh changed are added to `applied`.
+        // Applies finished results until the budget runs out, at least one per call. Urgent
+        // results and results 3 frames old are completed (waiting if needed) and applied
+        // whatever the budget. Stale results (chunk changed, unloaded or reused since
+        // scheduling) are dropped. Chunks whose mesh changed are added to `applied`.
         public void ApplyFinished(
             ChunkViewPool views,
             List<Chunk> applied,
             Stopwatch watch,
-            long budgetTicks
+            long budgetTicks,
+            int frame
         )
         {
             var appliedAny = false;
@@ -105,16 +110,17 @@ namespace Revoxel.World
                         continue;
                     }
 
-                    if (!urgentPass)
+                    // Writable mesh data may live 4 frames: older results are completed
+                    // (waiting if needed) and applied whatever the budget.
+                    var expiring = frame - slot.ScheduledFrame >= MaxResultAgeFrames;
+                    if (!urgentPass && !expiring)
                     {
-                        if (!slot.Handle.IsCompleted)
+                        if (
+                            !slot.Handle.IsCompleted
+                            || (appliedAny && watch.ElapsedTicks > budgetTicks)
+                        )
                         {
                             continue;
-                        }
-
-                        if (appliedAny && watch.ElapsedTicks > budgetTicks)
-                        {
-                            return;
                         }
                     }
 
@@ -228,6 +234,7 @@ namespace Revoxel.World
             public int Version;
             public bool Busy;
             public bool Urgent;
+            public int ScheduledFrame;
         }
     }
 }

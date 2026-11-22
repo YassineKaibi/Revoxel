@@ -459,7 +459,7 @@ namespace Revoxel.World
             using (ApplyMarker.Auto())
             {
                 ScheduleUrgent();
-                _pipeline.ApplyFinished(_views, _applied, _watch, remaining);
+                _pipeline.ApplyFinished(_views, _applied, _watch, remaining, Time.frameCount);
             }
 
             using (CollidersMarker.Auto())
@@ -882,7 +882,7 @@ namespace Revoxel.World
 
                     ClearDirtyAt(column, i);
                     FillNeighborhood(chunk);
-                    _pipeline.Schedule(chunk, false);
+                    _pipeline.Schedule(chunk, false, Time.frameCount);
                 }
             }
         }
@@ -913,7 +913,7 @@ namespace Revoxel.World
                 }
 
                 FillNeighborhood(chunk);
-                _pipeline.Schedule(chunk, true);
+                _pipeline.Schedule(chunk, true, Time.frameCount);
             }
 
             _urgent.Clear();
