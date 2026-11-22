@@ -47,6 +47,14 @@ MonoBehaviour:
     m_Key: ui.debug.voxel_memory
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947395
+    m_Key: ui.debug.detail_chunks
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947396
+    m_Key: ui.debug.detail_memory
+    m_Metadata:
+      m_Items: []
   m_Metadata:
     m_Items: []
   m_KeyGenerator:

@@ -58,19 +58,29 @@ namespace Revoxel.Tests.PlayMode
             Assert.That(stats.MeshedWithMissingNeighbors, Is.Zero);
 
             var settings = world.StreamingSettings;
+            var detail = world.GetComponent<DistanceDetail>();
             _focus.transform.position += new Vector3(40 * ChunkMeters, 0f, 0f);
             yield return null;
-            yield return WaitFor(() => world.IsSettled, "the world to settle after the move");
+            yield return WaitFor(
+                () => world.IsSettled && (detail == null || detail.IsSettled),
+                "the world to settle after the move"
+            );
 
+            // The full-detail square plus its margin column and the hysteresis (D-057).
+            // Columns the distance detail just hid unload over the next frames.
             var focus = new int2(40, 0);
-            var limit = settings.LoadRadiusChunks + settings.UnloadHysteresisChunks;
+            var center = world.FullDetailCenter;
+            var limit = settings.LoadRadiusChunks + 1 + settings.UnloadHysteresisChunks;
+            yield return WaitFor(
+                () => AllLoadedWithin(world, center, limit),
+                "hidden columns to unload"
+            );
             foreach (var column in world.LoadedColumns())
             {
-                var d = column - focus;
                 Assert.That(
-                    d.x * d.x + d.y * d.y,
-                    Is.LessThanOrEqualTo(limit * limit),
-                    $"{column} still loaded"
+                    math.all(column >= center - limit) && math.all(column < center + limit),
+                    Is.True,
+                    $"{column} still loaded, center {center}"
                 );
             }
 
@@ -254,6 +264,19 @@ namespace Revoxel.Tests.PlayMode
             _focus.transform.position = new Vector3(0.5f, 100f, 0.5f);
             world.Focus = _focus.transform;
             found(world);
+        }
+
+        private static bool AllLoadedWithin(VoxelWorld world, int2 center, int limit)
+        {
+            foreach (var column in world.LoadedColumns())
+            {
+                if (math.any(column < center - limit) || math.any(column >= center + limit))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool HasView(VoxelWorld world, int2 column)

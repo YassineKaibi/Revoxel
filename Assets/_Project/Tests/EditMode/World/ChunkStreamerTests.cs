@@ -8,52 +8,89 @@ namespace Revoxel.Tests.EditMode
     public sealed class ChunkStreamerTests
     {
         [Test]
-        public void Streamer_WantedColumns_AreWithinRadiusNearestFirst()
+        public void Streamer_WantedColumns_FillSquareNearestFirst()
         {
             var streamer = new ChunkStreamer();
             var wanted = new List<int2>();
-            var focus = new int2(-7, 12);
+            var center = new int2(-8, 12);
 
-            streamer.ComputeWanted(focus, 3, wanted);
+            streamer.ComputeWanted(center, 3, wanted);
 
-            var expected = 0;
-            for (var dz = -3; dz <= 3; dz++)
-            for (var dx = -3; dx <= 3; dx++)
-            {
-                expected += dx * dx + dz * dz <= 9 ? 1 : 0;
-            }
-
-            Assert.That(wanted.Count, Is.EqualTo(expected));
-            Assert.That(wanted[0], Is.EqualTo(focus));
+            Assert.That(wanted.Count, Is.EqualTo(36));
             var previous = 0;
             var seen = new HashSet<int2>();
             foreach (var column in wanted)
             {
-                var d = column - focus;
-                var distance = d.x * d.x + d.y * d.y;
-                Assert.That(distance, Is.LessThanOrEqualTo(9));
+                Assert.That(
+                    math.all(column >= center - 3) && math.all(column < center + 3),
+                    Is.True
+                );
+                var d = (column - center) * 2 + 1;
+                var distance = math.dot(d, d);
                 Assert.That(distance, Is.GreaterThanOrEqualTo(previous));
                 Assert.That(seen.Add(column), Is.True, $"{column} twice");
                 previous = distance;
             }
 
-            streamer.ComputeWanted(focus + 1, 3, wanted);
-            Assert.That(wanted.Count, Is.EqualTo(expected), "the list is cleared, not appended");
-            Assert.That(wanted[0], Is.EqualTo(focus + 1));
+            streamer.ComputeWanted(center + 2, 3, wanted);
+            Assert.That(wanted.Count, Is.EqualTo(36), "the list is cleared, not appended");
+            Assert.That(math.cmax(math.abs(wanted[0] - (center + 2))), Is.LessThanOrEqualTo(1));
         }
 
         [Test]
-        public void Streamer_Unload_UsesHysteresis()
+        public void Streamer_Unload_UsesSquareHysteresis()
         {
             var streamer = new ChunkStreamer();
-            var focus = new int2(100, -50);
+            var center = new int2(100, -50);
 
-            Assert.That(streamer.ShouldUnload(focus, focus, 12, 2), Is.False);
-            Assert.That(streamer.ShouldUnload(focus + new int2(12, 0), focus, 12, 2), Is.False);
-            Assert.That(streamer.ShouldUnload(focus + new int2(0, -13), focus, 12, 2), Is.False);
-            Assert.That(streamer.ShouldUnload(focus + new int2(14, 0), focus, 12, 2), Is.False);
-            Assert.That(streamer.ShouldUnload(focus + new int2(-15, 0), focus, 12, 2), Is.True);
-            Assert.That(streamer.ShouldUnload(focus + new int2(11, 11), focus, 12, 2), Is.True);
+            Assert.That(streamer.ShouldUnload(center, center, 12, 2), Is.False);
+            Assert.That(streamer.ShouldUnload(center + new int2(13, 0), center, 12, 2), Is.False);
+            Assert.That(streamer.ShouldUnload(center + new int2(13, 13), center, 12, 2), Is.False);
+            Assert.That(
+                streamer.ShouldUnload(center + new int2(-14, -14), center, 12, 2),
+                Is.False
+            );
+            Assert.That(streamer.ShouldUnload(center + new int2(14, 0), center, 12, 2), Is.True);
+            Assert.That(streamer.ShouldUnload(center + new int2(0, -15), center, 12, 2), Is.True);
+        }
+
+        [Test]
+        public void FullDetail_Recenter_KeepsFocusInsideAndEven()
+        {
+            var random = new Random(2026);
+            var focus = new int2(-3, 7);
+            var center = int2.zero;
+            var initialized = false;
+            for (var i = 0; i < 2000; i++)
+            {
+                focus +=
+                    i % 250 == 0
+                        ? random.NextInt2(new int2(-400), new int2(400))
+                        : random.NextInt2(new int2(-1), new int2(2));
+                ChunkStreamer.RecenterFullDetail(ref center, focus, initialized);
+                initialized = true;
+                Assert.That(center.x % 2 == 0 && center.y % 2 == 0, Is.True, $"{center} odd");
+                Assert.That(
+                    math.cmax(math.abs(focus - center)),
+                    Is.LessThanOrEqualTo(ChunkStreamer.RecenterDistance),
+                    $"focus {focus}, center {center}"
+                );
+            }
+        }
+
+        [Test]
+        public void FullDetail_Recenter_SmallMovesDoNotRecenter()
+        {
+            var center = int2.zero;
+            ChunkStreamer.RecenterFullDetail(ref center, new int2(-5, 9), false);
+            var first = center;
+            for (var i = 0; i < 20; i++)
+            {
+                var focus = new int2(-5 + (i & 1), 9 - (i & 1));
+                Assert.That(ChunkStreamer.RecenterFullDetail(ref center, focus, true), Is.False);
+            }
+
+            Assert.That(center, Is.EqualTo(first));
         }
 
         [Test]

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Unity.Collections;
 using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -46,6 +47,21 @@ namespace Revoxel.World
         public int Busy { get; private set; }
 
         public int Capacity => _slots.Count;
+
+        // Whether a mesh job is in flight for a chunk of the column. A slot whose chunk was
+        // reused elsewhere may answer true for a frame; callers only wait longer.
+        public bool HasJobForColumn(int2 column)
+        {
+            foreach (var slot in _slots)
+            {
+                if (slot.Busy && Coords.ColumnOf(slot.Chunk.Coord).Equals(column))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         // Pads the chunk from Neighborhood and schedules its mesh job. Urgent chunks (edits)
         // may grow the slots beyond the capacity and are completed by the next ApplyFinished.

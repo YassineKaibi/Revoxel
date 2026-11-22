@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddcbde683106412f9f15448c3c5c990e, type: 3}
+  m_Name: Placeholder_DistanceDetailSettings
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.DistanceDetailSettings
+  _levels: 6
+  _ringHalfWidthCells: 8
+  _wallDepthVoxels: 8
+  _maxJobsInFlight: 16
+  _mainThreadBudgetMs: 1
+  _meshMemoryBudgetMiB: 384

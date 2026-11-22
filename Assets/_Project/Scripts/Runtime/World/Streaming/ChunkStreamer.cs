@@ -3,55 +3,78 @@ using Unity.Mathematics;
 
 namespace Revoxel.World
 {
-    // Which chunk columns the world wants around a focus column, and which it drops.
-    // Distances are Euclidean in columns. No allocation per call once a radius is cached.
+    // Which chunk columns the world wants around the full-detail center, and which it
+    // drops (D-057: a square, not a circle). No allocation per call once a half-width is
+    // cached.
     public sealed class ChunkStreamer
     {
-        private readonly List<int2> _offsets = new List<int2>();
-        private int _offsetsRadius = -1;
+        // The center is recentred when the focus is farther than this (Chebyshev, columns).
+        public const int RecenterDistance = 2;
 
-        // Fills the list (cleared first) with every column within the radius, nearest first.
-        public void ComputeWanted(int2 focusColumn, int radius, List<int2> wantedNearestFirst)
+        private readonly List<int2> _offsets = new List<int2>();
+        private int _offsetsHalfWidth = -1;
+
+        // Fills the list (cleared first) with every column of
+        // [center - halfWidth, center + halfWidth), nearest to the point `center` first.
+        public void ComputeWanted(int2 center, int halfWidth, List<int2> wantedNearestFirst)
         {
-            EnsureOffsets(radius);
+            EnsureOffsets(halfWidth);
             wantedNearestFirst.Clear();
             for (var i = 0; i < _offsets.Count; i++)
             {
-                wantedNearestFirst.Add(focusColumn + _offsets[i]);
+                wantedNearestFirst.Add(center + _offsets[i]);
             }
         }
 
-        public bool ShouldUnload(int2 column, int2 focusColumn, int radius, int hysteresis)
+        public bool ShouldUnload(int2 column, int2 center, int halfWidth, int hysteresis)
         {
-            var d = column - focusColumn;
-            var keep = radius + hysteresis;
-            return d.x * d.x + d.y * d.y > keep * keep;
+            var keep = halfWidth + hysteresis;
+            return math.any(column < center - keep) || math.any(column >= center + keep);
         }
 
-        private void EnsureOffsets(int radius)
+        // The full-detail center: even, within RecenterDistance of the focus column. Returns
+        // whether it changed.
+        public static bool RecenterFullDetail(ref int2 center, int2 focusColumn, bool initialized)
         {
-            if (radius == _offsetsRadius)
+            if (initialized && math.cmax(math.abs(focusColumn - center)) <= RecenterDistance)
+            {
+                return false;
+            }
+
+            var next = NearestEven(focusColumn);
+            var changed = !initialized || !next.Equals(center);
+            center = next;
+            return changed;
+        }
+
+        // The even integer nearest to v (ties go up).
+        public static int2 NearestEven(int2 v) => ((v + 1) >> 1) << 1;
+
+        private void EnsureOffsets(int halfWidth)
+        {
+            if (halfWidth == _offsetsHalfWidth)
             {
                 return;
             }
 
             _offsets.Clear();
-            for (var dz = -radius; dz <= radius; dz++)
-            for (var dx = -radius; dx <= radius; dx++)
+            for (var dz = -halfWidth; dz < halfWidth; dz++)
+            for (var dx = -halfWidth; dx < halfWidth; dx++)
             {
-                if (dx * dx + dz * dz <= radius * radius)
-                {
-                    _offsets.Add(new int2(dx, dz));
-                }
+                _offsets.Add(new int2(dx, dz));
             }
 
             _offsets.Sort(CompareByDistance);
-            _offsetsRadius = radius;
+            _offsetsHalfWidth = halfWidth;
         }
 
+        // By the distance of the column's center (offset + 0.5) to the region center; in
+        // doubled units to stay integer.
         private static int CompareByDistance(int2 a, int2 b)
         {
-            var byDistance = (a.x * a.x + a.y * a.y).CompareTo(b.x * b.x + b.y * b.y);
+            var da = a * 2 + 1;
+            var db = b * 2 + 1;
+            var byDistance = math.dot(da, da).CompareTo(math.dot(db, db));
             if (byDistance != 0)
             {
                 return byDistance;

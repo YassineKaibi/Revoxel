@@ -5,6 +5,8 @@
 // base toward secondary by a smooth world-space pattern, so adjacent voxels of one type
 // read as one continuous material. Occlusion darkens inside corners only. Corruption
 // grades the color toward a tinted luminance; one global value until the corruption WP.
+// The pattern fades out as a pixel covers a good part of its scale (distant and coarse
+// chunks, PLAN-03 Task 5), so far materials read as their average color, not as noise.
 Shader "Revoxel/Voxel"
 {
     Properties
@@ -141,6 +143,11 @@ Shader "Revoxel/Voxel"
                 int pattern = (int)round(material.r * 3.0);
                 float scale = material.g * 8.0;
                 float contrast = material.b;
+
+                // Pixel footprint in meters relative to the pattern scale: 0.25 starts the
+                // fade, 0.75 ends it (sampling the noise coarser than that aliases).
+                float footprint = max(length(ddx(input.positionWS)), length(ddy(input.positionWS)));
+                contrast *= 1.0 - smoothstep(0.25, 0.75, footprint / max(scale, 0.01));
 
                 half3 albedo = lerp(baseColor, secondary, Pattern(pattern, input.positionWS, scale) * contrast);
                 half luminance = dot(albedo, half3(0.2126, 0.7152, 0.0722));
