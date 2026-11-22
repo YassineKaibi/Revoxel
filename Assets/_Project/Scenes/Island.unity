@@ -174,12 +174,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bfce2c131592342fdb98929e2b25fb47, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Revoxel.World::Revoxel.World.VoxelWorld
-  _registry: {fileID: 11400000, guid: a10af77232c7cd95bb9075d3f6c2033a, type: 2}
-  _genSettings: {fileID: 11400000, guid: 761ff34695b772c7d8c3ffb338128a87, type: 2}
+  _registry: {fileID: 11400000, guid: 40f0d44ede27da4d3949d6be2ca120e8, type: 2}
+  _terrainSettings: {fileID: 11400000, guid: 5e066cb4ec23114c0896415a93f2096d, type: 2}
+  _streamingSettings: {fileID: 11400000, guid: 4f879657e5aeb148eaf550d65c83fc85, type: 2}
+  _renderSettings: {fileID: 11400000, guid: 7f956df36c6c8da7e9ff0515441f9721, type: 2}
   _material: {fileID: 2100000, guid: cae77fb9388548f67bdc82f979b57c6e, type: 2}
   _seed: 42
-  _loadOnStart: 1
-  _focus: {fileID: 0}
+  _focus: {fileID: 1916378605}
 --- !u!4 &184413001
 Transform:
   m_ObjectHideFlags: 0
@@ -398,9 +399,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55b49a9d565f071c19bab5b815b89b33, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Revoxel.Game::Revoxel.Core.DebugBlockEditor
-  _world: {fileID: 184413000}
-  _placeBlock: {fileID: 11400000, guid: 91035757069eedc47a141359df704073, type: 2}
-  _reach: 8
   _testCubeLifetime: 20
 --- !u!114 &1916378607
 MonoBehaviour:
@@ -414,7 +412,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 09d99d0a33f8446e985b710b9534b0f4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Revoxel.Game::Revoxel.Core.DebugFlyCamera
-  _world: {fileID: 184413000}
   _speed: 12
   _fastMultiplier: 4
   _lookSensitivity: 0.1

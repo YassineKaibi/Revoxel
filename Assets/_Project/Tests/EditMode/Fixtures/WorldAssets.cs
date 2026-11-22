@@ -19,6 +19,12 @@ namespace Revoxel.Tests.EditMode
         public static WorldRenderSettings LoadRenderSettings() =>
             AssetDatabase.LoadAssetAtPath<WorldRenderSettings>(RenderSettingsPath);
 
+        public const string StreamingSettingsPath =
+            "Assets/_Project/Data/World/Placeholder_WorldStreamingSettings.asset";
+
+        public static WorldStreamingSettings LoadStreamingSettings() =>
+            AssetDatabase.LoadAssetAtPath<WorldStreamingSettings>(StreamingSettingsPath);
+
         public static VoxelRegistry LoadRegistry() =>
             AssetDatabase.LoadAssetAtPath<VoxelRegistry>(RegistryPath);
 
