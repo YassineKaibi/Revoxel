@@ -6,11 +6,14 @@ namespace Revoxel.World
     // VoxelWorld, in full-resolution columns. Level L (1 to Levels) is a square of level-L
     // cells (one cell is 2^L x 2^L full-resolution columns) whose edges lie on the level
     // L + 1 grid. Each square holds the finer one with at least one cell of margin, so a
-    // level L - 1 cell never touches a level L + 1 cell. Level L draws its square minus the
+    // level L - 1 cell never touches a level L + 1 cell. A coarse level's half-width is the
+    // ring half-width, widened where needed to hold the finer square (a large full-detail
+    // square widens only the first coarse levels). Level L draws its square minus the
     // finer square; every column of the outermost square is drawn by exactly one level.
     public sealed class DetailRings
     {
         private readonly int2[] _centers;
+        private readonly int[] _halfWidths;
         private bool _initialized;
 
         public DetailRings(int levels, int fullHalfWidth, int ringHalfWidth)
@@ -19,6 +22,15 @@ namespace Revoxel.World
             FullHalfWidth = fullHalfWidth;
             RingHalfWidth = ringHalfWidth;
             _centers = new int2[levels + 1];
+            _halfWidths = new int[levels + 1];
+            _halfWidths[0] = fullHalfWidth;
+            for (var level = 1; level <= levels; level++)
+            {
+                _halfWidths[level] = math.max(
+                    ringHalfWidth,
+                    MinRingHalfWidth(_halfWidths[level - 1])
+                );
+            }
         }
 
         public int Levels { get; }
@@ -31,12 +43,13 @@ namespace Revoxel.World
         public float ViewDistanceMeters =>
             HalfWidth(Levels) * (1 << Levels) * WorldConstants.ChunkSize * WorldConstants.VoxelSize;
 
-        // The smallest ring half-width that keeps one cell of margin around the finer square.
-        public static int MinRingHalfWidth(int fullHalfWidth) => fullHalfWidth / 2 + 2;
+        // The smallest even half-width that keeps one cell of margin around a finer square of
+        // this half-width (in finer cells, even).
+        public static int MinRingHalfWidth(int finerHalfWidth) => (finerHalfWidth / 2 + 3) & ~1;
 
         public int2 Center(int level) => _centers[level];
 
-        public int HalfWidth(int level) => level == 0 ? FullHalfWidth : RingHalfWidth;
+        public int HalfWidth(int level) => _halfWidths[level];
 
         // Inclusive min of the level's square, in level units.
         public int2 Min(int level) => _centers[level] - HalfWidth(level);

@@ -25,9 +25,13 @@ namespace Revoxel.Tests.EditMode
                 error
             );
 
-            // D-055: six coarse levels, about 2 km.
+            // D-055: six coarse levels, about 2 km with the streaming asset's full detail.
+            var full = WorldAssets.LoadStreamingSettings().LoadRadiusChunks;
             Assert.That(settings.Levels, Is.EqualTo(6));
-            Assert.That(settings.ViewDistanceMeters, Is.InRange(2000f, 2500f));
+            Assert.That(settings.ViewDistanceMeters(full), Is.InRange(2000f, 2500f));
+
+            // Full resolution reaches about 96 m (2026-11-22, Yassine).
+            Assert.That(full * 4f, Is.EqualTo(96f));
         }
     }
 }

@@ -86,7 +86,7 @@ namespace Revoxel.World
             return false;
         }
 
-        // The coarse squares must hold the full-detail square with a cell of margin.
+        // With the streaming settings the rings are built from.
         public bool TryValidateWith(WorldStreamingSettings streaming, out string error)
         {
             if (!TryValidate(out error))
@@ -94,22 +94,18 @@ namespace Revoxel.World
                 return false;
             }
 
-            var min = DetailRings.MinRingHalfWidth(streaming.LoadRadiusChunks);
-            if (_ringHalfWidthCells < min)
+            if (streaming == null)
             {
-                error =
-                    $"Ring half-width must be at least {min} for load radius {streaming.LoadRadiusChunks}.";
+                error = "Streaming settings are required.";
                 return false;
             }
 
-            return true;
+            return streaming.TryValidate(out error);
         }
 
-        public float ViewDistanceMeters =>
-            _ringHalfWidthCells
-            * (1 << _levels)
-            * WorldConstants.ChunkSize
-            * WorldConstants.VoxelSize;
+        // Half-width of the outermost square, meters, for a full-detail half-width.
+        public float ViewDistanceMeters(int fullHalfWidth) =>
+            new DetailRings(_levels, fullHalfWidth, _ringHalfWidthCells).ViewDistanceMeters;
 
         private void OnValidate()
         {

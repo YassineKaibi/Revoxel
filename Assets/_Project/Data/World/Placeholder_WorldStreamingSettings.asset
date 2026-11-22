@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d87c19db974b6e9b6832eae09393c51a, type: 3}
   m_Name: Placeholder_WorldStreamingSettings
   m_EditorClassIdentifier: Revoxel.World::Revoxel.World.WorldStreamingSettings
-  _loadRadiusChunks: 12
+  _loadRadiusChunks: 24
   _unloadHysteresisChunks: 2
   _colliderRadiusChunks: 2
   _maxGenerationJobsInFlight: 32

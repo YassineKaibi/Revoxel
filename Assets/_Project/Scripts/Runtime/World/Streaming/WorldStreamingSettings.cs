@@ -18,7 +18,7 @@ namespace Revoxel.World
                 + "margin column is loaded around it, D-057). "
                 + Placeholder
         )]
-        private int _loadRadiusChunks = 12;
+        private int _loadRadiusChunks = 24;
 
         [SerializeField]
         [Tooltip("Columns unload only beyond the load radius plus this. " + Placeholder)]

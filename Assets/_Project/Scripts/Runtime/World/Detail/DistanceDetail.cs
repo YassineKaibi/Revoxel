@@ -91,7 +91,7 @@ namespace Revoxel.World
 
         public bool IsSettled { get; private set; }
 
-        public float ViewDistanceMeters => _settings != null ? _settings.ViewDistanceMeters : 0f;
+        public float ViewDistanceMeters => _rings != null ? _rings.ViewDistanceMeters : 0f;
 
         public DistanceDetailSettings Settings => _settings;
 
@@ -292,7 +292,7 @@ namespace Revoxel.World
             {
                 camera.farClipPlane = math.max(
                     camera.farClipPlane,
-                    _settings.ViewDistanceMeters * FarPlaneFactor
+                    _rings.ViewDistanceMeters * FarPlaneFactor
                 );
             }
         }

@@ -8,13 +8,14 @@ namespace Revoxel.Tests.EditMode
     public sealed class DetailRingsTests
     {
         private const int Levels = 6;
-        private const int FullHalfWidth = 12;
         private const int RingHalfWidth = 8;
 
-        [Test]
-        public void DetailRings_RegionsNestWithMargin()
+        [TestCase(12)]
+        [TestCase(24)]
+        [TestCase(40)]
+        public void DetailRings_RegionsNestWithMargin(int fullHalfWidth)
         {
-            foreach (var rings in Walk(2000))
+            foreach (var rings in Walk(2000, fullHalfWidth))
             {
                 for (var level = 0; level <= Levels; level++)
                 {
@@ -45,11 +46,12 @@ namespace Revoxel.Tests.EditMode
             }
         }
 
-        [Test]
-        public void DetailRings_DisplaySetsTileExactlyOnce()
+        [TestCase(12)]
+        [TestCase(24)]
+        public void DetailRings_DisplaySetsTileExactlyOnce(int fullHalfWidth)
         {
             var count = 0;
-            foreach (var rings in Walk(300))
+            foreach (var rings in Walk(300, fullHalfWidth))
             {
                 if (count++ % 30 != 0)
                 {
@@ -70,11 +72,12 @@ namespace Revoxel.Tests.EditMode
             }
         }
 
-        [Test]
-        public void DetailRings_NeighborLevelsDifferByAtMostOne()
+        [TestCase(12)]
+        [TestCase(24)]
+        public void DetailRings_NeighborLevelsDifferByAtMostOne(int fullHalfWidth)
         {
             var count = 0;
-            foreach (var rings in Walk(300))
+            foreach (var rings in Walk(300, fullHalfWidth))
             {
                 if (count++ % 30 != 0)
                 {
@@ -104,19 +107,32 @@ namespace Revoxel.Tests.EditMode
         [Test]
         public void DetailRings_ViewDistance()
         {
-            var rings = new DetailRings(Levels, FullHalfWidth, RingHalfWidth);
+            var rings = new DetailRings(Levels, 12, RingHalfWidth);
 
             Assert.That(rings.ViewDistanceMeters, Is.EqualTo(2048f));
-            Assert.That(
-                DetailRings.MinRingHalfWidth(FullHalfWidth),
-                Is.LessThanOrEqualTo(RingHalfWidth)
-            );
+        }
+
+        // A wide full-detail square widens only the first coarse levels, as far as needed to
+        // hold the finer square with a cell of margin; the view distance stays the same.
+        [Test]
+        public void DetailRings_WideFullDetail_WidensOnlyInnerRings()
+        {
+            var rings = new DetailRings(Levels, 24, RingHalfWidth);
+
+            Assert.That(rings.HalfWidth(1), Is.EqualTo(14));
+            Assert.That(rings.HalfWidth(2), Is.EqualTo(10));
+            for (var level = 3; level <= Levels; level++)
+            {
+                Assert.That(rings.HalfWidth(level), Is.EqualTo(RingHalfWidth), $"level {level}");
+            }
+
+            Assert.That(rings.ViewDistanceMeters, Is.EqualTo(2048f));
         }
 
         // A focus random walk with teleports; yields the rings after each step.
-        private static IEnumerable<DetailRings> Walk(int steps)
+        private static IEnumerable<DetailRings> Walk(int steps, int fullHalfWidth)
         {
-            var rings = new DetailRings(Levels, FullHalfWidth, RingHalfWidth);
+            var rings = new DetailRings(Levels, fullHalfWidth, RingHalfWidth);
             var random = new Random(777);
             var focus = new int2(-1001, 403);
             var center = int2.zero;
