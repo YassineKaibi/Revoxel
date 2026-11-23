@@ -261,8 +261,8 @@ namespace Revoxel.World
                 };
                 _chunkSlots[i] = new ChunkSlot
                 {
-                    Heights = new NativeArray<float>(
-                        TerrainGenerator.DetailHeightGridCount,
+                    Samples = new NativeArray<TerrainSample>(
+                        TerrainGenerator.DetailSampleGridCount,
                         Allocator.Persistent,
                         NativeArrayOptions.UninitializedMemory
                     ),
@@ -518,7 +518,7 @@ namespace Revoxel.World
                     Level = cell.Level,
                     Coord = slot.Coord,
                     SideWalls = true,
-                    Heights = slot.Heights,
+                    Samples = slot.Samples,
                     Padded = slot.Padded,
                 }.Schedule();
                 slot.Handle = new GreedyMeshJob
@@ -1029,9 +1029,9 @@ namespace Revoxel.World
                         slot.HasData = false;
                     }
 
-                    if (slot.Heights.IsCreated)
+                    if (slot.Samples.IsCreated)
                     {
-                        slot.Heights.Dispose();
+                        slot.Samples.Dispose();
                     }
 
                     if (slot.Padded.IsCreated)
@@ -1109,7 +1109,7 @@ namespace Revoxel.World
 
         private sealed class ChunkSlot
         {
-            public NativeArray<float> Heights;
+            public NativeArray<TerrainSample> Samples;
             public NativeArray<ushort> Padded;
             public Mesh.MeshDataArray Data;
             public bool HasData;

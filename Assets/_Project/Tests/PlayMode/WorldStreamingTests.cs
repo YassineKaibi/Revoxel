@@ -149,6 +149,38 @@ namespace Revoxel.Tests.PlayMode
             Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
         }
 
+        // PLAN-04 Task 4: the world's biome query is the generator's, and its biome resolves
+        // to a Biome asset.
+        [UnityTest]
+        public IEnumerator World_BiomeQuery_MatchesGenerator()
+        {
+            yield return UnloadAllScenes();
+            VoxelWorld world = null;
+            yield return LoadIslandWithFocus(w => world = w);
+            yield return null;
+
+            foreach (
+                var position in new[]
+                {
+                    new float3(0.5f, 80f, 0.5f),
+                    new float3(-1234.5f, 90f, 2345.5f),
+                }
+            )
+            {
+                Assert.That(world.TrySampleBiome(position, out var sample), Is.True);
+                var voxel = Coords.WorldPositionToVoxel(position);
+                var expected = TerrainGenerator.Sample(world.TerrainParameters, voxel.x, voxel.z);
+
+                Assert.That(sample.Biome, Is.EqualTo(expected.Biome));
+                Assert.That(sample.Height, Is.EqualTo(expected.Height));
+                Assert.That(world.TryGetBiome(sample.Biome, out var biome), Is.True);
+                Assert.That(biome.Id, Is.EqualTo(sample.Biome));
+            }
+
+            Assert.That(world.TryGetBiome(new BiomeId(200), out _), Is.False);
+            Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
+        }
+
         [UnityTest]
         public IEnumerator World_EditAtChunkBorder_UpdatesMeshAndCollider()
         {

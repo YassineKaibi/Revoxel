@@ -58,6 +58,42 @@ MonoBehaviour:
     m_Localized: "M\xE9moire des maillages lointains"
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947397
+    m_Localized: Biome
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947398
+    m_Localized: "C\xF4te et plage"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947399
+    m_Localized: "R\xE9cif"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947400
+    m_Localized: Plaines
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947401
+    m_Localized: "For\xEAt"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947402
+    m_Localized: Marais et delta
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947403
+    m_Localized: Canyon
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947404
+    m_Localized: Montagnes
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947405
+    m_Localized: "D\xE9charges"
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []

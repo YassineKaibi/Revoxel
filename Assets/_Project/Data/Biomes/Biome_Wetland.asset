@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fcd172bd21b475b93ea703a87a25edb, type: 3}
+  m_Name: Biome_Wetland
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.Biome
+  _id: 4
+  _nameKey: biome.wetland.name
+  _temperatureC: {x: -100, y: 100}
+  _moisture: {x: 0.6, y: 10}
+  _inland: {x: 0.03, y: 0.3}
+  _altitudeMeters: {x: -1000, y: 16}
+  _waste: {x: -10, y: 10}
+  _bias: -0.2
+  _baseInfluence: 0.15
+  _offsetMeters: 0.4
+  _hillAmplitudeMeters: 1.2
+  _terrace: 0
+  _surface: {fileID: 11400000, guid: 01b282aa8d5c4b8487bed3914659c3f3, type: 2}
+  _alternateSurface: {fileID: 11400000, guid: 72d4d3c87028bf213a1190377e49077e, type: 2}
+  _alternateShare: 0.35
+  _shore: {fileID: 11400000, guid: 01b282aa8d5c4b8487bed3914659c3f3, type: 2}
+  _soil: {fileID: 11400000, guid: 01b282aa8d5c4b8487bed3914659c3f3, type: 2}
+  _soilDepthMeters: {x: 1.5, y: 3.5}
+  _strata:
+  - {fileID: 11400000, guid: f1e263b891444587b81ee42d850cfe81, type: 2}
+  - {fileID: 11400000, guid: f1e263b891444587b81ee42d850cfe81, type: 2}
+  - {fileID: 11400000, guid: 6c349052978c4324a3c3ad6d747dda95, type: 2}
+  - {fileID: 11400000, guid: 435ae967e5080d6948829493a5698749, type: 2}
+  _strataThicknessMeters: 1.5
+  _wastePocketChance: 0.08

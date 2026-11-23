@@ -9,7 +9,8 @@ namespace Revoxel.UI
     // switches the selected locale between the two available ones (fr, en), plus the
     // world counters (frame time, loaded chunks, chunk views, pending jobs, voxel memory;
     // D-045, D-046, D-054) and the distance detail counters (distant chunks, distant mesh
-    // memory; PLAN-03 Task 5). IMGUI on purpose, so the UI framework choice stays open.
+    // memory; PLAN-03 Task 5) and the biome under the camera (D-065). IMGUI on purpose, so
+    // the UI framework choice stays open.
     public sealed class DebugOverlay : MonoBehaviour
     {
         public const string TableName = "UI";
@@ -22,6 +23,7 @@ namespace Revoxel.UI
         public const string VoxelMemoryKey = "ui.debug.voxel_memory";
         public const string DetailChunksKey = "ui.debug.detail_chunks";
         public const string DetailMemoryKey = "ui.debug.detail_memory";
+        public const string BiomeKey = "ui.debug.biome";
 
         // The counters text is rebuilt at this interval, not every frame.
         private const float CountersRefreshSeconds = 0.25f;
@@ -60,6 +62,9 @@ namespace Revoxel.UI
         private LocalizedString _detailMemoryText = new LocalizedString(TableName, DetailMemoryKey);
 
         [SerializeField]
+        private LocalizedString _biomeText = new LocalizedString(TableName, BiomeKey);
+
+        [SerializeField]
         private VoxelWorld _world;
 
         [SerializeField]
@@ -72,6 +77,9 @@ namespace Revoxel.UI
         private string _voxelMemoryLabel = string.Empty;
         private string _detailChunksLabel = string.Empty;
         private string _detailMemoryLabel = string.Empty;
+        private string _biomeLabel = string.Empty;
+        private string _biomeName = string.Empty;
+        private int _biomeNameId = -1;
         private float _smoothedFrameTime;
         private float _nextCountersRefresh;
 #endif
@@ -108,6 +116,8 @@ namespace Revoxel.UI
             _voxelMemoryText.StringChanged += OnVoxelMemoryChanged;
             _detailChunksText.StringChanged += OnDetailChunksChanged;
             _detailMemoryText.StringChanged += OnDetailMemoryChanged;
+            _biomeText.StringChanged += OnBiomeChanged;
+            LocalizationSettings.SelectedLocaleChanged += OnLocaleChanged;
 #endif
         }
 
@@ -123,6 +133,8 @@ namespace Revoxel.UI
             _voxelMemoryText.StringChanged -= OnVoxelMemoryChanged;
             _detailChunksText.StringChanged -= OnDetailChunksChanged;
             _detailMemoryText.StringChanged -= OnDetailMemoryChanged;
+            _biomeText.StringChanged -= OnBiomeChanged;
+            LocalizationSettings.SelectedLocaleChanged -= OnLocaleChanged;
 #endif
         }
 
@@ -145,6 +157,36 @@ namespace Revoxel.UI
 
         private void OnDetailMemoryChanged(string value) => _detailMemoryLabel = value;
 
+        private void OnBiomeChanged(string value) => _biomeLabel = value;
+
+        // Biome names are looked up again in the new language.
+        private void OnLocaleChanged(Locale locale) => _biomeNameId = -1;
+
+        // The localized name of the biome under the camera, looked up only when it changes.
+        private string BiomeName()
+        {
+            var camera = Camera.main;
+            if (
+                camera == null
+                || !_world.TrySampleBiome(camera.transform.position, out var sample)
+                || !_world.TryGetBiome(sample.Biome, out var biome)
+            )
+            {
+                return string.Empty;
+            }
+
+            if (_biomeNameId != sample.Biome.Value)
+            {
+                _biomeNameId = sample.Biome.Value;
+                _biomeName = LocalizationSettings.StringDatabase.GetLocalizedString(
+                    TableName,
+                    biome.NameKey
+                );
+            }
+
+            return _biomeName;
+        }
+
         private void Update()
         {
             var frameTime = Time.unscaledDeltaTime * 1000f;
@@ -165,7 +207,8 @@ namespace Revoxel.UI
                 + $"{_pendingJobsLabel}: {pending}\n"
                 + $"{_voxelMemoryLabel}: {stats.VoxelMemoryBytes / BytesPerMiB:F1} MiB\n"
                 + $"{_detailChunksLabel}: {detail.Views}\n"
-                + $"{_detailMemoryLabel}: {detail.MeshBytes / BytesPerMiB:F1} MiB";
+                + $"{_detailMemoryLabel}: {detail.MeshBytes / BytesPerMiB:F1} MiB\n"
+                + $"{_biomeLabel}: {BiomeName()}";
         }
 #endif
 

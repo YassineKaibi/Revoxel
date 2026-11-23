@@ -58,6 +58,42 @@ MonoBehaviour:
     m_Localized: Distant mesh memory
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947397
+    m_Localized: Biome
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947398
+    m_Localized: Coast and beach
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947399
+    m_Localized: Reef
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947400
+    m_Localized: Plains
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947401
+    m_Localized: Forest
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947402
+    m_Localized: Wetland and delta
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947403
+    m_Localized: Canyon
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947404
+    m_Localized: Mountains
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947405
+    m_Localized: Waste lands
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []
