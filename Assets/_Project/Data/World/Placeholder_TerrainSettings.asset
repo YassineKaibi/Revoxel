@@ -54,6 +54,8 @@ MonoBehaviour:
   _borderJitter: 0.15
   _borderScaleMeters: 48
   _patchScaleMeters: 24
+  _patchEdge: 0.06
+  _patchEdgeScaleMeters: 1
   _subsurfaceDepthMeters: 8
   _soilScaleMeters: 40
   _soilZeroSlope: 1.5

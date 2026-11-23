@@ -204,6 +204,16 @@ namespace Revoxel.World
         [Tooltip("Feature size of the alternate surface patches, m." + Placeholder)]
         private float _patchScaleMeters = 24f;
 
+        [SerializeField]
+        [Tooltip(
+            "How much a fine noise frays the patch edges, in patch noise units." + Placeholder
+        )]
+        private float _patchEdge = 0.06f;
+
+        [SerializeField]
+        [Tooltip("Feature size of the patch edge noise, m." + Placeholder)]
+        private float _patchEdgeScaleMeters = 1f;
+
         [Header("Subsurface")]
         [SerializeField]
         [Tooltip(
@@ -373,6 +383,10 @@ namespace Revoxel.World
 
         public float PatchScaleMeters => _patchScaleMeters;
 
+        public float PatchEdge => _patchEdge;
+
+        public float PatchEdgeScaleMeters => _patchEdgeScaleMeters;
+
         public float SubsurfaceDepthMeters => _subsurfaceDepthMeters;
 
         public float SoilScaleMeters => _soilScaleMeters;
@@ -461,6 +475,8 @@ namespace Revoxel.World
                 || _wasteScaleMeters <= 0f
                 || _borderScaleMeters <= 0f
                 || _patchScaleMeters <= 0f
+                || _patchEdgeScaleMeters <= 0f
+                || _patchEdge < 0f
                 || _soilScaleMeters <= 0f
                 || _foldScaleMeters <= 0f
                 || _wobbleScaleMeters <= 0f

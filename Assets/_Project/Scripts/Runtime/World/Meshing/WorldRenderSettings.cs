@@ -20,15 +20,30 @@ namespace Revoxel.World
         [Range(0f, 1f)]
         private float _aoMin = 0.55f;
 
+        [SerializeField]
+        [Tooltip(
+            "How far the faces of one-voxel steps are lit as if facing up, 0 (as built) to 1 (like the ground), D-066. Placeholder value (Q-12)."
+        )]
+        [Range(0f, 1f)]
+        private float _stepNormalBend = 0.85f;
+
         public Color CorruptionTint => _corruptionTint;
 
         public float AoMin => _aoMin;
+
+        public float StepNormalBend => _stepNormalBend;
 
         public bool TryValidate(out string error)
         {
             if (_aoMin < 0f || _aoMin > 1f)
             {
                 error = "AO floor must be 0 to 1.";
+                return false;
+            }
+
+            if (_stepNormalBend < 0f || _stepNormalBend > 1f)
+            {
+                error = "Step normal bend must be 0 to 1.";
                 return false;
             }
 

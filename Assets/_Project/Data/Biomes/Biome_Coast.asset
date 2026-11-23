@@ -32,8 +32,9 @@ MonoBehaviour:
   _soilDepthMeters: {x: 1.5, y: 3}
   _strata:
   - {fileID: 11400000, guid: 3d2c6038121e47dfb4d46ad9cb5527a2, type: 2}
-  - {fileID: 11400000, guid: 3d2c6038121e47dfb4d46ad9cb5527a2, type: 2}
   - {fileID: 11400000, guid: db3a185f802e4a5494552689c6ec1de8, type: 2}
   - {fileID: 11400000, guid: 435ae967e5080d6948829493a5698749, type: 2}
-  _strataThicknessMeters: 2.5
+  - {fileID: 11400000, guid: 6c349052978c4324a3c3ad6d747dda95, type: 2}
+  - {fileID: 11400000, guid: 3d2c6038121e47dfb4d46ad9cb5527a2, type: 2}
+  _strataThicknessMeters: 1.5
   _wastePocketChance: 0.05

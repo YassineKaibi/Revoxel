@@ -50,6 +50,8 @@ namespace Revoxel.World
         public float BorderJitter;
         public float BorderFrequency;
         public float PatchFrequency;
+        public float PatchEdge;
+        public float PatchEdgeFrequency;
         public int SubsurfaceDepth;
         public float SoilFrequency;
         public float SoilZeroSlope;
@@ -82,6 +84,7 @@ namespace Revoxel.World
         public float2 WasteOffset;
         public float2 BorderOffset;
         public float2 PatchOffset;
+        public float2 PatchEdgeOffset;
         public float2 SoilOffset;
         public float2 FoldOffset;
         public float2 WobbleOffset;
@@ -138,6 +141,8 @@ namespace Revoxel.World
                 BorderJitter = settings.BorderJitter,
                 BorderFrequency = Frequency(settings.BorderScaleMeters),
                 PatchFrequency = Frequency(settings.PatchScaleMeters),
+                PatchEdge = settings.PatchEdge,
+                PatchEdgeFrequency = Frequency(settings.PatchEdgeScaleMeters),
                 SubsurfaceDepth = (int)math.round(settings.SubsurfaceDepthMeters * v),
                 SoilFrequency = Frequency(settings.SoilScaleMeters),
                 SoilZeroSlope = settings.SoilZeroSlope,
@@ -173,6 +178,7 @@ namespace Revoxel.World
                 FoldOffset = random.NextFloat2(-OffsetRange, OffsetRange),
                 WobbleOffset = random.NextFloat2(-OffsetRange, OffsetRange),
                 ThinningOffset = random.NextFloat2(-OffsetRange, OffsetRange),
+                PatchEdgeOffset = random.NextFloat2(-OffsetRange, OffsetRange),
             };
 
             foreach (var type in settings.PocketTypes)

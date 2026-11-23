@@ -31,6 +31,7 @@ namespace Revoxel.World
         private const int ReliefOctaves = 2;
         private const int MoistureOctaves = 2;
         private const int BorderOctaves = 3;
+        private const int PatchOctaves = 3;
 
         // Surface height in voxels: voxels with y below it are solid.
         public static int SurfaceHeight(in TerrainParams p, int x, int z) =>
@@ -63,7 +64,6 @@ namespace Revoxel.World
                 Inland = fields.Inland,
                 AltitudeMeters = fields.AltitudeMeters,
                 Waste = fields.Waste,
-                Patch = 0.5f + 0.5f * noise.snoise(fields.Pos * p.PatchFrequency + p.PatchOffset),
                 Biome = PickBiome(p, fields.Pos, weights),
             };
         }
@@ -120,7 +120,10 @@ namespace Revoxel.World
             }
             else
             {
-                top = sample.Patch < biome.AlternateShare ? biome.AlternateSurface : biome.Surface;
+                top =
+                    biome.AlternateShare > 0f && Patch(p, pos) < biome.AlternateShare
+                        ? biome.AlternateSurface
+                        : biome.Surface;
                 soilId = biome.Soil;
                 if (sample.TemperatureC < p.SnowTemperatureC && slope < p.SnowMaxSlope)
                 {
@@ -699,6 +702,13 @@ namespace Revoxel.World
 
             return new BiomeId((byte)first);
         }
+
+        // Alternate surface patches: irregular shapes from three octaves, and a fine noise
+        // that frays their edges over about a meter instead of a clean contour.
+        private static float Patch(in TerrainParams p, float2 pos) =>
+            0.5f
+            + 0.5f * Fbm(p, pos, p.PatchFrequency, PatchOctaves, p.PatchOffset)
+            + p.PatchEdge * noise.snoise(pos * p.PatchEdgeFrequency + p.PatchEdgeOffset);
 
         // Buried waste (D-063): an ellipsoid in some cells of a 3D grid, kept inside the
         // subsurface band and at least two voxels below the surface.

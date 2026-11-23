@@ -172,9 +172,11 @@ namespace Revoxel.Tests.EditMode
         [Test]
         public void Mesh_InsideCorner_IsOccluded()
         {
-            // Slab at y 0, a wall row at y 1, z 16 on top of it.
+            // Slab at y 0, a wall row two voxels high at y 1 and 2, z 16 on top of it.
             var r = _fixture.MeshChunk(p =>
-                p.y == 0 || (p.y == 1 && p.z == 16) ? MeshFixture.Stone : MeshFixture.Air
+                p.y == 0 || (p.y >= 1 && p.y <= 2 && p.z == 16)
+                    ? MeshFixture.Stone
+                    : MeshFixture.Air
             );
 
             var touching = 0;
@@ -192,6 +194,83 @@ namespace Revoxel.Tests.EditMode
             }
 
             Assert.That(touching, Is.GreaterThan(0));
+        }
+
+        // D-066: a one-voxel step (a row one voxel high on the slab) draws no dark line on
+        // the slab next to it.
+        [Test]
+        public void Mesh_OneVoxelStep_IsNotOccluded()
+        {
+            var r = _fixture.MeshChunk(p =>
+                p.y == 0 || (p.y == 1 && p.z == 16) ? MeshFixture.Stone : MeshFixture.Air
+            );
+
+            var touching = 0;
+            foreach (var vertex in r.Vertices)
+            {
+                var onSlabTop = vertex.Normal.y > 0.5f && math.abs(vertex.Position.y - V) < 1e-5f;
+                var atStep =
+                    math.abs(vertex.Position.z - 16 * V) < 1e-5f
+                    || math.abs(vertex.Position.z - 17 * V) < 1e-5f;
+                if (onSlabTop && atStep)
+                {
+                    touching++;
+                    Assert.That(vertex.MaterialAo.y, Is.EqualTo(1f), $"{vertex.Position}");
+                }
+            }
+
+            Assert.That(touching, Is.GreaterThan(0));
+        }
+
+        // D-066: the side faces of a one-voxel step carry the step flag; those of a wall two
+        // voxels high, and of a floating voxel, do not.
+        [Test]
+        public void Mesh_OneVoxelStep_SideFacesAreMarked()
+        {
+            var step = _fixture.MeshChunk(p =>
+                p.y == 0 || (p.y == 1 && p.z == 16) ? MeshFixture.Stone : MeshFixture.Air
+            );
+            var wall = _fixture.MeshChunk(p =>
+                p.y == 0 || (p.y >= 1 && p.y <= 2 && p.z == 16)
+                    ? MeshFixture.Stone
+                    : MeshFixture.Air
+            );
+            var single = _fixture.MeshChunk(p =>
+                p.x == 16 && p.y == 16 && p.z == 16 ? MeshFixture.Stone : MeshFixture.Air
+            );
+
+            // The row's two long faces (toward -z and +z, from y 1 to 2 voxels) stand on the
+            // slab; its end faces look at the Air padding, with no ground beyond them.
+            var marked = 0;
+            for (var q = 0; q < step.Vertices.Length; q += 4)
+            {
+                var first = step.Vertices[q];
+                var minY = math.min(
+                    math.min(first.Position.y, step.Vertices[q + 1].Position.y),
+                    math.min(step.Vertices[q + 2].Position.y, step.Vertices[q + 3].Position.y)
+                );
+                var riser = math.abs(first.Normal.z) > 0.5f && minY > V - 1e-5f;
+                var expected = MeshFixture.Stone + (riser ? GreedyMeshJob.StepFlag : 0);
+                for (var c = 0; c < 4; c++)
+                {
+                    var vertex = step.Vertices[q + c];
+                    Assert.That(vertex.MaterialAo.x, Is.EqualTo(expected), $"{vertex.Position}");
+                }
+
+                marked += riser ? 1 : 0;
+            }
+
+            // Two long faces, split where the chunk's end columns change their occlusion.
+            Assert.That(marked, Is.GreaterThanOrEqualTo(2));
+            foreach (var vertex in wall.Vertices)
+            {
+                Assert.That(vertex.MaterialAo.x, Is.EqualTo(MeshFixture.Stone), "two-voxel wall");
+            }
+
+            foreach (var vertex in single.Vertices)
+            {
+                Assert.That(vertex.MaterialAo.x, Is.EqualTo(MeshFixture.Stone), "floating voxel");
+            }
         }
 
         [Test]

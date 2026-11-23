@@ -25,9 +25,6 @@ namespace Revoxel.World
         // Dump site field, 0 to 1.
         public float Waste;
 
-        // 0 to 1; below the biome's alternate share the surface is the alternate type.
-        public float Patch;
-
         public BiomeId Biome;
     }
 }
