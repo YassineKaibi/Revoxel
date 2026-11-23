@@ -142,14 +142,14 @@ namespace Revoxel.Tests.EditMode
             var settings = WorldAssets.LoadTerrainSettings();
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
             var columns = new[] { new int2(0, 0), new int2(999, 999), new int2(-850, 300) };
-            using var range = new NativeReference<int2>(Allocator.TempJob);
+            using var range = new NativeReference<ColumnRange>(Allocator.TempJob);
             foreach (var column in columns)
             {
                 new ColumnHeightJob
                 {
                     Params = p,
                     Column = column,
-                    HeightRange = range,
+                    Range = range,
                 }
                     .Schedule()
                     .Complete();

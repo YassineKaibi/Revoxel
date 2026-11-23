@@ -7,6 +7,7 @@
 // grades the color toward a tinted luminance; one global value until the corruption WP.
 // The pattern fades out as a pixel covers a good part of its scale (distant and coarse
 // chunks, PLAN-03 Task 5), so far materials read as their average color, not as noise.
+// While the main camera is in water the view fogs toward the underwater color (D-073).
 Shader "Revoxel/Voxel"
 {
     Properties
@@ -48,6 +49,9 @@ Shader "Revoxel/Voxel"
             float _RevoxelCorruption;
             float4 _RevoxelCorruptionTint;
             float _RevoxelAoMin;
+            float _RevoxelUnderwater;
+            float4 _RevoxelUnderwaterColor;
+            float _RevoxelUnderwaterDensity;
 
             struct Attributes
             {
@@ -169,7 +173,18 @@ Shader "Revoxel/Voxel"
                 #endif
 
                 half3 color = albedo * occlusion * (direct + ambient);
-                color = MixFog(color, input.fogFactor);
+                if (_RevoxelUnderwater > 0.5)
+                {
+                    float distance = length(input.positionWS - GetCameraPositionWS());
+                    float fog = 1.0 - exp(-_RevoxelUnderwaterDensity * distance);
+                    half3 lit = mainLight.color * saturate(mainLight.direction.y * 0.5 + 0.5) + SampleSH(half3(0.0, 1.0, 0.0));
+                    color = lerp(color, _RevoxelUnderwaterColor.rgb * lit, fog);
+                }
+                else
+                {
+                    color = MixFog(color, input.fogFactor);
+                }
+
                 return half4(color, 1);
             }
             ENDHLSL

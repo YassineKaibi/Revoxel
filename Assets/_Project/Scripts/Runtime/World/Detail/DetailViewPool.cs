@@ -21,12 +21,13 @@ namespace Revoxel.World
         private readonly Stack<DetailView> _free = new Stack<DetailView>();
         private readonly List<DetailView> _all = new List<DetailView>();
         private readonly Transform _parent;
-        private readonly Material _material;
+        private readonly Material[] _materials;
 
-        public DetailViewPool(Transform parent, Material material)
+        // One material per render submesh: voxels, then liquids (D-073).
+        public DetailViewPool(Transform parent, Material[] materials)
         {
             _parent = parent;
-            _material = material;
+            _materials = materials;
         }
 
         public int ActiveCount { get; private set; }
@@ -81,7 +82,11 @@ namespace Revoxel.World
                 Renderer = go.AddComponent<MeshRenderer>(),
                 Mesh = new Mesh { name = "DetailChunk" },
             };
-            view.Renderer.sharedMaterial = _material;
+            if (_materials != null)
+            {
+                view.Renderer.sharedMaterials = _materials;
+            }
+
             go.AddComponent<MeshFilter>().sharedMesh = view.Mesh;
             _all.Add(view);
             return view;

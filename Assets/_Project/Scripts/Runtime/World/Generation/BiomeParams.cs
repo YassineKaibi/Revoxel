@@ -27,6 +27,18 @@ namespace Revoxel.World
         public float PocketChance;
         public FixedList32Bytes<ushort> Strata;
 
+        // Run of river valley walls below their shore (D-076).
+        public float RiverWallRun;
+
+        // Coral heads (D-072), voxels; ReefHeight 0 means none.
+        public float ReefHeight;
+        public float ReefFrequency;
+        public float ReefCover;
+        public int ReefClearance;
+        public float ReefCoralMin;
+        public ushort ReefRock;
+        public FixedList32Bytes<ushort> ReefCorals;
+
         public static BiomeParams Create(Biome biome)
         {
             const float v = WorldConstants.VoxelsPerMeter;
@@ -34,6 +46,15 @@ namespace Revoxel.World
             foreach (var type in biome.Strata)
             {
                 strata.Add(type.Id.Value);
+            }
+
+            var corals = new FixedList32Bytes<ushort>();
+            if (biome.HasReef)
+            {
+                foreach (var type in biome.ReefCorals)
+                {
+                    corals.Add(type.Id.Value);
+                }
             }
 
             return new BiomeParams
@@ -61,6 +82,14 @@ namespace Revoxel.World
                 StrataThickness = biome.StrataThicknessMeters * v,
                 PocketChance = biome.WastePocketChance,
                 Strata = strata,
+                RiverWallRun = biome.RiverWallRun,
+                ReefHeight = biome.ReefHeightMeters * v,
+                ReefFrequency = biome.HasReef ? 1f / (biome.ReefScaleMeters * v) : 0f,
+                ReefCover = biome.ReefCover,
+                ReefClearance = (int)math.round(biome.ReefClearanceMeters * v),
+                ReefCoralMin = biome.ReefCoralMin,
+                ReefRock = biome.HasReef ? biome.ReefRock.Id.Value : (ushort)0,
+                ReefCorals = corals,
             };
         }
     }

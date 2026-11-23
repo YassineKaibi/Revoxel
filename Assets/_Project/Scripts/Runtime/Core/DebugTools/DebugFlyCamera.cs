@@ -139,6 +139,12 @@ namespace Revoxel.Core
         {
             if (_world != null && _world.TryGetSurfaceHeightMeters(0, 0, out var surface))
             {
+                // Over water the camera starts above its surface (WP-05).
+                if (_world.TryGetWaterColumn(0, 0, out var water) && water.IsWet)
+                {
+                    surface = Mathf.Max(surface, water.SurfaceMeters);
+                }
+
                 transform.position = new Vector3(0.0625f, surface + _startHeight, 0.0625f);
             }
         }

@@ -181,6 +181,57 @@ namespace Revoxel.Tests.PlayMode
             Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
         }
 
+        // PLAN-05 Task 4 (D-074): over loaded ground, the voxel water query agrees with the
+        // generated water: in water below the level with the surface at it, dry above. A
+        // lake column is used (lake levels are exact, so Burst and managed agree).
+        [UnityTest]
+        public IEnumerator World_WaterQuery_MatchesGenerator()
+        {
+            yield return UnloadAllScenes();
+            VoxelWorld world = null;
+            yield return LoadIslandWithFocus(w => world = w);
+            yield return WaitFor(() => world.IsSettled, "the world to settle");
+
+            var found = false;
+            var at = int2.zero;
+            var column = default(WaterColumn);
+            const int searchMeters = 80;
+            for (var z = -searchMeters; z <= searchMeters && !found; z += 2)
+            for (var x = -searchMeters; x <= searchMeters && !found; x += 2)
+            {
+                var vx = x * WorldConstants.VoxelsPerMeter;
+                var vz = z * WorldConstants.VoxelsPerMeter;
+                Assert.That(world.TryGetWaterColumn(vx, vz, out var c), Is.True);
+                if (c.IsWet && c.Body == WaterBody.Lake && c.DepthMeters > 1f)
+                {
+                    found = true;
+                    at = new int2(vx, vz);
+                    column = c;
+                }
+            }
+
+            Assert.That(found, Is.True, "no lake water within 80 m of the origin");
+            Assert.That(
+                column.Level,
+                Is.EqualTo(WaterMap.Column(world.TerrainParameters, at.x, at.y).Level)
+            );
+            var below = new float3(
+                (at.x + 0.5f) * WorldConstants.VoxelSize,
+                (column.Level - 4) * WorldConstants.VoxelSize,
+                (at.y + 0.5f) * WorldConstants.VoxelSize
+            );
+            Assert.That(world.TrySampleWater(below, out var water), Is.True);
+            Assert.That(water.InWater, Is.True);
+            Assert.That(water.Body, Is.EqualTo(WaterBody.Lake));
+            Assert.That(water.SurfaceMeters, Is.EqualTo(column.SurfaceMeters).Within(1e-4f));
+            Assert.That(water.DepthMeters, Is.EqualTo(4 * WorldConstants.VoxelSize).Within(1e-4f));
+
+            var above = below + new float3(0f, 1f, 0f);
+            Assert.That(world.TrySampleWater(above, out var air), Is.True);
+            Assert.That(air.InWater, Is.False);
+            Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
+        }
+
         [UnityTest]
         public IEnumerator World_EditAtChunkBorder_UpdatesMeshAndCollider()
         {

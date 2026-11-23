@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e57b01c7cde438f9df6e65709519fec, type: 3}
+  m_Name: Placeholder_WaterSettings
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.WaterSettings
+  _maxRivers: 12
+  _springCandidates: 256
+  _springMinAltitudeMeters: 40
+  _springMinInland: 0.2
+  _sourceSpacingMeters: 500
+  _riverStepMeters: 48
+  _riverMaxSteps: 100
+  _riverMinSteps: 8
+  _riverTurnDegrees: 20
+  _riverOutwardBias: 0.05
+  _riverMaxCutMeters: 24
+  _riverRisePenalty: 8
+  _riverInsetMeters: 0.75
+  _riverHalfWidthMeters: {x: 4, y: 18}
+  _riverDepthMeters: {x: 1, y: 2.5}
+  _fallMinMeters: 2
+  _fallSteepness: 4
+  _joinDistanceMeters: 60
+  _meanderMeters: 20
+  _meanderScaleMeters: 160
+  _bankWidthMeters: 4
+  _bankLipMeters: 0.125
+  _shoreCutMeters: 4
+  _shoreRun: 8
+  _maxWallWidthMeters: 150
+  _maxLakes: 14
+  _lakeCandidates: 1024
+  _lakeRadiusMeters: {x: 100, y: 400}
+  _lakeMinInland: 0.12
+  _lakeMinAltitudeMeters: 6
+  _lakeMaxReliefMeters: 16
+  _lakeDepthMeters: 8
+  _lakeShapeNoise: 0.35
+  _lakeShapeScaleMeters: 180
+  _lakeRimMarginMeters: 1
+  _lakeLevelStepMeters: 1
+  _lakeOutletShare: 0.6
+  _riverBed: {fileID: 11400000, guid: 512e202638a54d82ab671063de85dea5, type: 2}
+  _lakeBed: {fileID: 11400000, guid: 01b282aa8d5c4b8487bed3914659c3f3, type: 2}

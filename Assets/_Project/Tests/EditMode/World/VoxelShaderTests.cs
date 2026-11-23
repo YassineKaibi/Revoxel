@@ -25,6 +25,76 @@ namespace Revoxel.Tests.EditMode
         }
 
         [Test]
+        public void Shader_WaterCompilesWithoutErrors()
+        {
+            var shader = Shader.Find(VoxelShaderGlobals.WaterShaderName);
+
+            Assert.That(
+                shader,
+                Is.Not.Null,
+                $"Shader '{VoxelShaderGlobals.WaterShaderName}' not found"
+            );
+            Assert.That(ShaderUtil.ShaderHasError(shader), Is.False);
+            foreach (var message in ShaderUtil.GetShaderMessages(shader))
+            {
+                Assert.That(
+                    message.severity,
+                    Is.Not.EqualTo(UnityEditor.Rendering.ShaderCompilerMessageSeverity.Error),
+                    $"{message.message} (line {message.line})"
+                );
+            }
+        }
+
+        [Test]
+        public void Material_WaterUsesWaterShaderAndIsTransparent()
+        {
+            var material = AssetDatabase.LoadAssetAtPath<Material>(WorldAssets.WaterMaterialPath);
+
+            Assert.That(material, Is.Not.Null, $"No material at {WorldAssets.WaterMaterialPath}");
+            Assert.That(material.shader.name, Is.EqualTo(VoxelShaderGlobals.WaterShaderName));
+            Assert.That(
+                material.renderQueue,
+                Is.EqualTo((int)UnityEngine.Rendering.RenderQueue.Transparent)
+            );
+        }
+
+        // D-073: the water look and the underwater fog come from the settings.
+        [Test]
+        public void VoxelShaderGlobals_SetDefaults_SetsWaterAndUnderwater()
+        {
+            var settings = WorldAssets.LoadRenderSettings();
+            try
+            {
+                VoxelShaderGlobals.SetDefaults(settings);
+
+                Assert.That(
+                    (Color)Shader.GetGlobalVector(VoxelShaderGlobals.WaterScatterId),
+                    Is.EqualTo(settings.WaterScatter.linear)
+                );
+                Assert.That(
+                    (Vector3)Shader.GetGlobalVector(VoxelShaderGlobals.WaterAbsorptionId),
+                    Is.EqualTo(settings.WaterAbsorptionPerMeter)
+                );
+                Assert.That(
+                    Shader.GetGlobalVector(VoxelShaderGlobals.WaterSurfaceId).y,
+                    Is.EqualTo(1f / settings.WaterWaveScaleMeters).Within(1e-6f)
+                );
+                Assert.That(
+                    Shader.GetGlobalFloat(VoxelShaderGlobals.UnderwaterDensityId),
+                    Is.EqualTo(settings.UnderwaterDensityPerMeter)
+                );
+                Assert.That(Shader.GetGlobalFloat(VoxelShaderGlobals.UnderwaterId), Is.EqualTo(0f));
+
+                VoxelShaderGlobals.SetUnderwater(true);
+                Assert.That(Shader.GetGlobalFloat(VoxelShaderGlobals.UnderwaterId), Is.EqualTo(1f));
+            }
+            finally
+            {
+                VoxelShaderGlobals.SetDefaults(settings);
+            }
+        }
+
+        [Test]
         public void Material_VoxelUsesVoxelShader()
         {
             var material = AssetDatabase.LoadAssetAtPath<Material>(WorldAssets.MaterialPath);

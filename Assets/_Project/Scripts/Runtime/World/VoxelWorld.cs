@@ -44,6 +44,9 @@ namespace Revoxel.World
             "Revoxel.World.Colliders"
         );
 
+        // Water queries look this far up for the surface: deeper than any generated water.
+        private const int WaterScanVoxels = 1024;
+
         private static readonly int3[] FaceNeighbors =
         {
             new int3(1, 0, 0),
@@ -68,6 +71,10 @@ namespace Revoxel.World
 
         [SerializeField]
         private Material _material;
+
+        [SerializeField]
+        [Tooltip("Material of the liquid submesh (Revoxel/Water, D-073).")]
+        private Material _waterMaterial;
 
         [SerializeField]
         [Tooltip("Placeholder fixed seed (PLAN-02).")]
@@ -97,6 +104,10 @@ namespace Revoxel.World
         private WorldBounds _bounds;
         private TerrainParams _params;
         private bool[] _opaque;
+        private bool[] _liquid;
+        private TerrainParams _queryParams;
+        private bool _hasQueryParams;
+        private bool _underwater;
         private ChunkMeshPipeline _pipeline;
         private ChunkViewPool _views;
         private HeightSlot[] _heightSlots;
@@ -176,6 +187,14 @@ namespace Revoxel.World
 
         internal Material Material => _material;
 
+        internal Material WaterMaterial => _waterMaterial;
+
+        // The chunk materials by submesh: voxels, then liquids (D-073).
+        internal Material[] Materials { get; private set; }
+
+        // True while the main camera is inside a liquid voxel (D-073).
+        public bool IsCameraUnderwater => _underwater;
+
         public bool IsInFullDetail(int2 column) =>
             _hasFullCenter
             && math.all(column >= _fullCenter - FullDetailHalfWidth)
@@ -240,6 +259,12 @@ namespace Revoxel.World
 
             _activeRegistry = registry;
             _bounds = bounds;
+            _liquid = new bool[WorldConstants.MaxVoxelTypes];
+            using var renderData = registry.CreateRenderData(Allocator.Temp);
+            for (var i = 0; i < renderData.Length; i++)
+            {
+                _liquid[i] = renderData[i].IsLiquid;
+            }
         }
 
         // Takes ownership of the voxels. Replaces (and disposes) a chunk already there.
@@ -272,10 +297,7 @@ namespace Revoxel.World
                 return false;
             }
 
-            var p = _streaming
-                ? _params
-                : TerrainParams.Create(new WorldSeed(_seed), _terrainSettings);
-            meters = TerrainGenerator.SurfaceHeight(p, x, z) * WorldConstants.VoxelSize;
+            meters = TerrainGenerator.SurfaceHeight(QueryParams(), x, z) * WorldConstants.VoxelSize;
             return true;
         }
 
@@ -289,12 +311,79 @@ namespace Revoxel.World
                 return false;
             }
 
-            var p = _streaming
-                ? _params
-                : TerrainParams.Create(new WorldSeed(_seed), _terrainSettings);
             var voxel = Coords.WorldPositionToVoxel(positionMeters);
-            sample = BiomeMap.Sample(p, voxel.x, voxel.z);
+            sample = BiomeMap.Sample(QueryParams(), voxel.x, voxel.z);
             return true;
+        }
+
+        // The water at a position, meters (D-074): from the loaded voxels, so edits count.
+        // In water when the voxel there is a liquid; the surface is the top of the liquid
+        // above it. False when the chunk there is not loaded.
+        public bool TrySampleWater(float3 positionMeters, out WaterSample sample)
+        {
+            sample = default;
+            var voxel = Coords.WorldPositionToVoxel(positionMeters);
+            Coords.WorldToChunk(voxel, out var coord, out _);
+            if (_liquid == null || !_chunks.ContainsKey(coord))
+            {
+                return false;
+            }
+
+            if (!_liquid[GetVoxel(voxel).Value])
+            {
+                return true;
+            }
+
+            var top = voxel.y;
+            var limit = math.min(WorldConstants.WorldHeightVoxels - 1, voxel.y + WaterScanVoxels);
+            while (top < limit && _liquid[GetVoxel(new int3(voxel.x, top + 1, voxel.z)).Value])
+            {
+                top++;
+            }
+
+            var surface = (top + 1) * WorldConstants.VoxelSize;
+            sample = new WaterSample
+            {
+                InWater = true,
+                SurfaceMeters = surface,
+                DepthMeters = surface - positionMeters.y,
+                Body =
+                    _terrainSettings != null && _terrainSettings.WaterSettings != null
+                        ? TerrainGenerator.Sample(QueryParams(), voxel.x, voxel.z).Body
+                        : WaterBody.Sea,
+            };
+            return true;
+        }
+
+        // Generated water of a voxel column (D-074; edits not included): level and body.
+        // False when the terrain settings are missing.
+        public bool TryGetWaterColumn(int x, int z, out WaterColumn column)
+        {
+            if (_terrainSettings == null || _terrainSettings.WaterSettings == null)
+            {
+                column = default;
+                return false;
+            }
+
+            column = WaterMap.Column(QueryParams(), x, z);
+            return true;
+        }
+
+        // The streaming parameters, or ones built once for queries before streaming starts.
+        private TerrainParams QueryParams()
+        {
+            if (_streaming)
+            {
+                return _params;
+            }
+
+            if (!_hasQueryParams)
+            {
+                _queryParams = TerrainParams.Create(new WorldSeed(_seed), _terrainSettings);
+                _hasQueryParams = true;
+            }
+
+            return _queryParams;
         }
 
         public bool TryGetBiome(BiomeId id, out Biome biome)
@@ -469,6 +558,12 @@ namespace Revoxel.World
                 _materialTable = null;
             }
 
+            if (_underwater)
+            {
+                _underwater = false;
+                VoxelShaderGlobals.SetUnderwater(false);
+            }
+
             _chunks.Clear();
             _columns.Clear();
             _urgent.Clear();
@@ -563,6 +658,8 @@ namespace Revoxel.World
                 UpdateColliders();
             }
 
+            UpdateUnderwater();
+
             _lastMainThreadMs = (float)(
                 (_updateTicks + _watch.ElapsedTicks) * 1000.0 / Stopwatch.Frequency
             );
@@ -574,6 +671,21 @@ namespace Revoxel.World
             ReleaseResources();
         }
 
+        // The shaders fog the view under water while the main camera is in a liquid.
+        private void UpdateUnderwater()
+        {
+            var main = Camera.main;
+            var underwater =
+                main != null
+                && TrySampleWater(main.transform.position, out var water)
+                && water.InWater;
+            if (underwater != _underwater)
+            {
+                _underwater = underwater;
+                VoxelShaderGlobals.SetUnderwater(underwater);
+            }
+        }
+
         private bool TryStartStreaming(out string error)
         {
             if (
@@ -582,10 +694,11 @@ namespace Revoxel.World
                 || _streamingSettings == null
                 || _renderSettings == null
                 || _material == null
+                || _waterMaterial == null
             )
             {
                 error =
-                    "registry, terrain, streaming and render settings and material are required.";
+                    "registry, terrain, streaming and render settings and both materials are required.";
                 return false;
             }
 
@@ -601,6 +714,7 @@ namespace Revoxel.World
 
             Initialize(_registry, WorldBounds.Island());
             _params = TerrainParams.Create(new WorldSeed(_seed), _terrainSettings);
+            _hasQueryParams = false;
             _opaque = new bool[WorldConstants.MaxVoxelTypes];
             using (var renderData = _registry.CreateRenderData(Allocator.Temp))
             {
@@ -614,7 +728,8 @@ namespace Revoxel.World
             VoxelShaderGlobals.SetMaterialTable(_materialTable);
             VoxelShaderGlobals.SetDefaults(_renderSettings);
             _pipeline = new ChunkMeshPipeline(_registry, _streamingSettings.MaxMeshJobsInFlight);
-            _views = new ChunkViewPool(transform, _material);
+            Materials = new[] { _material, _waterMaterial };
+            _views = new ChunkViewPool(transform, Materials);
             _air = ChunkVoxels.CreateUniform(VoxelId.Air, Allocator.Persistent);
             var slots = _streamingSettings.MaxGenerationJobsInFlight;
             _heightSlots = new HeightSlot[slots];
@@ -623,7 +738,7 @@ namespace Revoxel.World
             {
                 _heightSlots[i] = new HeightSlot
                 {
-                    Range = new NativeReference<int2>(Allocator.Persistent),
+                    Range = new NativeReference<ColumnRange>(Allocator.Persistent),
                 };
                 _genSlots[i] = new GenSlot
                 {
@@ -916,7 +1031,7 @@ namespace Revoxel.World
             {
                 Params = _params,
                 Column = coord,
-                HeightRange = slot.Range,
+                Range = slot.Range,
             }.Schedule();
         }
 
@@ -1450,7 +1565,7 @@ namespace Revoxel.World
 
         private sealed class HeightSlot
         {
-            public NativeReference<int2> Range;
+            public NativeReference<ColumnRange> Range;
             public JobHandle Handle;
             public StreamColumn Column;
             public bool Busy;

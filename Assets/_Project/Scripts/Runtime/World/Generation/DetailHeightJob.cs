@@ -5,8 +5,8 @@ using Unity.Mathematics;
 
 namespace Revoxel.World
 {
-    // The surface height range of one coarse cell (PLAN-03 Task 2), from which the
-    // distance detail decides which of the cell's chunks to mesh.
+    // The surface height and water level ranges of one coarse cell (PLAN-03 Task 2,
+    // D-070), from which the distance detail decides which of the cell's chunks to mesh.
     [BurstCompile(CompileSynchronously = true)]
     public struct DetailHeightJob : IJob
     {
@@ -15,11 +15,11 @@ namespace Revoxel.World
         public int2 Cell;
 
         [WriteOnly]
-        public NativeReference<int2> HeightRange;
+        public NativeReference<ColumnRange> Range;
 
         public void Execute()
         {
-            HeightRange.Value = TerrainGenerator.DetailHeightRange(Params, Cell, Level);
+            Range.Value = TerrainGenerator.DetailRange(Params, Cell, Level);
         }
     }
 }

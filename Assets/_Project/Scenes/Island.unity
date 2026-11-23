@@ -180,6 +180,7 @@ MonoBehaviour:
   _streamingSettings: {fileID: 11400000, guid: 4f879657e5aeb148eaf550d65c83fc85, type: 2}
   _renderSettings: {fileID: 11400000, guid: 7f956df36c6c8da7e9ff0515441f9721, type: 2}
   _material: {fileID: 2100000, guid: cae77fb9388548f67bdc82f979b57c6e, type: 2}
+  _waterMaterial: {fileID: 2100000, guid: f98ca9dbc4f24b49b35e8fb4685b77a4, type: 2}
   _seed: 42
   _focus: {fileID: 1916378605}
 --- !u!114 &184413002

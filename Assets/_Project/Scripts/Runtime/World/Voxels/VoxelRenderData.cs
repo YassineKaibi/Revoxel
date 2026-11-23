@@ -8,5 +8,8 @@ namespace Revoxel.World
 
         // Opaque voxels hide the faces of their neighbors.
         public bool IsOpaque;
+
+        // Liquid voxels go to the water submesh and get faces only toward Air (D-073).
+        public bool IsLiquid;
     }
 }

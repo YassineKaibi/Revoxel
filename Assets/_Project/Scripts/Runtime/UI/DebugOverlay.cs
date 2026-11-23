@@ -9,8 +9,9 @@ namespace Revoxel.UI
     // switches the selected locale between the two available ones (fr, en), plus the
     // world counters (frame time, loaded chunks, chunk views, pending jobs, voxel memory;
     // D-045, D-046, D-054) and the distance detail counters (distant chunks, distant mesh
-    // memory; PLAN-03 Task 5) and the biome under the camera (D-065). IMGUI on purpose, so
-    // the UI framework choice stays open.
+    // memory; PLAN-03 Task 5), the biome under the camera (D-065) and the water the camera
+    // is in, with its depth (D-074). IMGUI on purpose, so the UI framework choice stays
+    // open.
     public sealed class DebugOverlay : MonoBehaviour
     {
         public const string TableName = "UI";
@@ -24,6 +25,15 @@ namespace Revoxel.UI
         public const string DetailChunksKey = "ui.debug.detail_chunks";
         public const string DetailMemoryKey = "ui.debug.detail_memory";
         public const string BiomeKey = "ui.debug.biome";
+        public const string WaterKey = "ui.debug.water";
+
+        // Names of the water bodies, indexed by WaterBody.
+        public static readonly string[] WaterBodyKeys =
+        {
+            "water.sea.name",
+            "water.lake.name",
+            "water.river.name",
+        };
 
         // The counters text is rebuilt at this interval, not every frame.
         private const float CountersRefreshSeconds = 0.25f;
@@ -65,6 +75,9 @@ namespace Revoxel.UI
         private LocalizedString _biomeText = new LocalizedString(TableName, BiomeKey);
 
         [SerializeField]
+        private LocalizedString _waterText = new LocalizedString(TableName, WaterKey);
+
+        [SerializeField]
         private VoxelWorld _world;
 
         [SerializeField]
@@ -80,6 +93,8 @@ namespace Revoxel.UI
         private string _biomeLabel = string.Empty;
         private string _biomeName = string.Empty;
         private int _biomeNameId = -1;
+        private string _waterLabel = string.Empty;
+        private readonly string[] _waterBodyNames = new string[3];
         private float _smoothedFrameTime;
         private float _nextCountersRefresh;
 #endif
@@ -117,6 +132,7 @@ namespace Revoxel.UI
             _detailChunksText.StringChanged += OnDetailChunksChanged;
             _detailMemoryText.StringChanged += OnDetailMemoryChanged;
             _biomeText.StringChanged += OnBiomeChanged;
+            _waterText.StringChanged += OnWaterChanged;
             LocalizationSettings.SelectedLocaleChanged += OnLocaleChanged;
 #endif
         }
@@ -134,6 +150,7 @@ namespace Revoxel.UI
             _detailChunksText.StringChanged -= OnDetailChunksChanged;
             _detailMemoryText.StringChanged -= OnDetailMemoryChanged;
             _biomeText.StringChanged -= OnBiomeChanged;
+            _waterText.StringChanged -= OnWaterChanged;
             LocalizationSettings.SelectedLocaleChanged -= OnLocaleChanged;
 #endif
         }
@@ -159,8 +176,38 @@ namespace Revoxel.UI
 
         private void OnBiomeChanged(string value) => _biomeLabel = value;
 
-        // Biome names are looked up again in the new language.
-        private void OnLocaleChanged(Locale locale) => _biomeNameId = -1;
+        private void OnWaterChanged(string value) => _waterLabel = value;
+
+        // Biome and water names are looked up again in the new language.
+        private void OnLocaleChanged(Locale locale)
+        {
+            _biomeNameId = -1;
+            for (var i = 0; i < _waterBodyNames.Length; i++)
+            {
+                _waterBodyNames[i] = null;
+            }
+        }
+
+        // The water the camera is in and its depth, or nothing when dry.
+        private string WaterText()
+        {
+            var camera = Camera.main;
+            if (
+                camera == null
+                || !_world.TrySampleWater(camera.transform.position, out var water)
+                || !water.InWater
+            )
+            {
+                return string.Empty;
+            }
+
+            var body = (int)water.Body;
+            _waterBodyNames[body] ??= LocalizationSettings.StringDatabase.GetLocalizedString(
+                TableName,
+                WaterBodyKeys[body]
+            );
+            return $"{_waterBodyNames[body]}, {water.DepthMeters:F1} m";
+        }
 
         // The localized name of the biome under the camera, looked up only when it changes.
         private string BiomeName()
@@ -208,7 +255,8 @@ namespace Revoxel.UI
                 + $"{_voxelMemoryLabel}: {stats.VoxelMemoryBytes / BytesPerMiB:F1} MiB\n"
                 + $"{_detailChunksLabel}: {detail.Views}\n"
                 + $"{_detailMemoryLabel}: {detail.MeshBytes / BytesPerMiB:F1} MiB\n"
-                + $"{_biomeLabel}: {BiomeName()}";
+                + $"{_biomeLabel}: {BiomeName()}\n"
+                + $"{_waterLabel}: {WaterText()}";
         }
 #endif
 

@@ -38,3 +38,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 3d2c6038121e47dfb4d46ad9cb5527a2, type: 2}
   _strataThicknessMeters: 2.5
   _wastePocketChance: 0.01
+  _riverWallRun: 1

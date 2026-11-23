@@ -68,6 +68,12 @@ namespace Revoxel.World
                     hasAir = true;
                 }
 
+                if (type.IsLiquid && (type.IsSolid || type.IsOpaque))
+                {
+                    error = $"{type.name}: a liquid must be neither solid nor opaque.";
+                    return false;
+                }
+
                 seen[id] = true;
             }
 
@@ -102,6 +108,7 @@ namespace Revoxel.World
                     {
                         IsSolid = type.IsSolid,
                         IsOpaque = type.IsOpaque,
+                        IsLiquid = type.IsLiquid,
                     };
                 }
             }

@@ -16,6 +16,7 @@ MonoBehaviour:
   _nameKey: voxel.water.name
   _isSolid: 0
   _isOpaque: 0
+  _isLiquid: 1
   _baseColor: {r: 0.22745098, g: 0.56078434, b: 0.8156863, a: 1}
   _secondaryColor: {r: 0.19333334, g: 0.4766667, b: 0.6933334, a: 1}
   _pattern: 0

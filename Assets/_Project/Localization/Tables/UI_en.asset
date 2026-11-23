@@ -94,6 +94,22 @@ MonoBehaviour:
     m_Localized: Waste lands
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947406
+    m_Localized: Water
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947407
+    m_Localized: Sea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947408
+    m_Localized: Lake
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947409
+    m_Localized: River
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []

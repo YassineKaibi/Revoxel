@@ -91,6 +91,22 @@ MonoBehaviour:
     m_Key: biome.waste_lands.name
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947406
+    m_Key: ui.debug.water
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947407
+    m_Key: water.sea.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947408
+    m_Key: water.lake.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947409
+    m_Key: water.river.name
+    m_Metadata:
+      m_Items: []
   m_Metadata:
     m_Items: []
   m_KeyGenerator:

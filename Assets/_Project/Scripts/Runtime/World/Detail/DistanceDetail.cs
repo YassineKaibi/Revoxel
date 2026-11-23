@@ -249,7 +249,7 @@ namespace Revoxel.World
             _renderLayout = ChunkMesher.CreateRenderLayout(Allocator.Persistent);
             _collisionLayout = ChunkMesher.CreateCollisionLayout(Allocator.Persistent);
             _scratchCollision = new Mesh { name = "DetailScratchCollision" };
-            _views = new DetailViewPool(transform, _world.Material);
+            _views = new DetailViewPool(transform, _world.Materials);
             var slots = _settings.MaxJobsInFlight;
             _heightSlots = new HeightSlot[slots];
             _chunkSlots = new ChunkSlot[slots];
@@ -257,7 +257,7 @@ namespace Revoxel.World
             {
                 _heightSlots[i] = new HeightSlot
                 {
-                    Range = new NativeReference<int2>(Allocator.Persistent),
+                    Range = new NativeReference<ColumnRange>(Allocator.Persistent),
                 };
                 _chunkSlots[i] = new ChunkSlot
                 {
@@ -388,6 +388,18 @@ namespace Revoxel.World
         private static int CompareByDistance(DetailCell a, DetailCell b) =>
             a.SortKey.CompareTo(b.SortKey);
 
+        // Indices of every submesh: voxels and liquids (D-073).
+        private static int IndexCount(Mesh.MeshData mesh)
+        {
+            var count = 0;
+            for (var i = 0; i < mesh.subMeshCount; i++)
+            {
+                count += mesh.GetSubMesh(i).indexCount;
+            }
+
+            return count;
+        }
+
         // Finished height jobs decide which chunks of their cell to mesh.
         private void CollectHeights()
         {
@@ -485,7 +497,7 @@ namespace Revoxel.World
                     Params = _params,
                     Level = cell.Level,
                     Cell = cell.Coord,
-                    HeightRange = slot.Range,
+                    Range = slot.Range,
                 }.Schedule();
                 return;
             }
@@ -530,6 +542,7 @@ namespace Revoxel.World
                     RenderMesh = slot.Data[0],
                     CollisionMesh = slot.Data[1],
                     SkipCollision = true,
+                    SkipLiquidSides = true,
                 }.Schedule(fill);
                 return true;
             }
@@ -591,8 +604,7 @@ namespace Revoxel.World
                 var view = _views.Get(cell.Level, slot.Coord);
                 var bytes =
                     (long)render.vertexCount * render.GetVertexBufferStride(0)
-                    + (long)render.GetSubMesh(0).indexCount
-                        * (render.indexFormat == IndexFormat.UInt32 ? 4 : 2);
+                    + (long)IndexCount(render) * (render.indexFormat == IndexFormat.UInt32 ? 4 : 2);
                 _targets[0] = view.Mesh;
                 _targets[1] = _scratchCollision;
                 Mesh.ApplyAndDisposeWritableMeshData(slot.Data, _targets, ApplyFlags);
@@ -1100,7 +1112,7 @@ namespace Revoxel.World
 
         private sealed class HeightSlot
         {
-            public NativeReference<int2> Range;
+            public NativeReference<ColumnRange> Range;
             public JobHandle Handle;
             public DetailCell Cell;
             public int Version;

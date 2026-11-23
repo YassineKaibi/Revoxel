@@ -124,6 +124,35 @@ namespace Revoxel.Tests.EditMode
             Assert.That(registry.IsRegistered(new VoxelId(600)), Is.False);
         }
 
+        // D-073: water is the liquid; a liquid can be neither solid nor opaque.
+        [Test]
+        public void VoxelRegistry_LiquidsAreNeitherSolidNorOpaque()
+        {
+            var registry = WorldAssets.LoadRegistry();
+            Assert.That(registry.TryGet(new VoxelId(1), out var water), Is.True);
+            Assert.That(water.IsLiquid, Is.True, water.name);
+            using (var data = registry.CreateRenderData(Unity.Collections.Allocator.Temp))
+            {
+                Assert.That(data[1].IsLiquid, Is.True);
+                Assert.That(data[5].IsLiquid, Is.False);
+            }
+
+            var solidLiquid = Type(2, "voxel.bad.name", true);
+            solidLiquid.Configure(
+                2,
+                "voxel.bad.name",
+                true,
+                true,
+                Color.white,
+                Color.gray,
+                SurfacePattern.Flat,
+                1f,
+                0f,
+                isLiquid: true
+            );
+            AssertInvalid(Registry(Air(), solidLiquid));
+        }
+
         private static void AssertPixel(Texture2D table, int x, int y, Color expected)
         {
             Assert.That(

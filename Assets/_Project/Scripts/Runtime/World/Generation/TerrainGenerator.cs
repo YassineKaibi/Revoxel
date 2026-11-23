@@ -11,6 +11,33 @@ namespace Revoxel.World
         UniformWater = 3,
     }
 
+    // Floored surface heights (min, max) and water levels (min, max) over a set of
+    // columns, voxels: what chunk classification needs (D-053, D-070).
+    public struct ColumnRange
+    {
+        public int2 Height;
+        public int2 Water;
+
+        public static ColumnRange Empty =>
+            new ColumnRange
+            {
+                Height = new int2(int.MaxValue, int.MinValue),
+                Water = new int2(int.MaxValue, int.MinValue),
+            };
+
+        public void Add(int height, int water)
+        {
+            Height = new int2(math.min(Height.x, height), math.max(Height.y, height));
+            Water = new int2(math.min(Water.x, water), math.max(Water.y, water));
+        }
+
+        // Heights widened by `by` each way. Water levels are not: every path computes them
+        // with the same code from the same samples, and the sea surface must stay exact so
+        // the chunk above it remains uniform Air.
+        public ColumnRange WidenedHeights(int by) =>
+            new ColumnRange { Height = Height + new int2(-by, by), Water = Water };
+    }
+
     // The island generator (PLAN-04): pure functions of the parameters and the voxel or
     // chunk coordinate, Burst-callable. The terrain is a height field (D-061): a column
     // (x, z) is solid for y below its surface height.
@@ -19,8 +46,9 @@ namespace Revoxel.World
     // biome weights (D-062); the height blends every biome's shape with those weights, plus
     // mountain ridges; the column's biome is the heaviest one with a noise-moved border.
     // Under the surface (D-063): the biome's soil, then folded strata and buried waste
-    // pockets down to the subsurface depth, then Stone. Empty voxels below sea level are
-    // water.
+    // pockets down to the subsurface depth, then Stone. Reef biomes raise coral heads from
+    // the sea floor (D-072); lakes and rivers then cut or bank the land (Hydrology, D-070,
+    // D-071). Empty voxels below the column's water level are water.
     public static class TerrainGenerator
     {
         // Samples of a chunk's 32 x 32 columns plus a one-column border, for slopes.
@@ -33,6 +61,14 @@ namespace Revoxel.World
         private const int BorderOctaves = 3;
         private const int PatchOctaves = 3;
 
+        // Shape of the coral head noise (structure, not tuning): a coarse and a fine octave,
+        // and the noise band over which a head rises from the floor.
+        private const float ReefMinWeight = 0.01f;
+        private const float ReefCoarse = 0.7f;
+        private const float ReefFineRatio = 2.7f;
+        private const float ReefFineShift = 17.3f;
+        private const float ReefEdge = 0.2f;
+
         // Surface height in voxels: voxels with y below it are solid.
         public static int SurfaceHeight(in TerrainParams p, int x, int z) =>
             (int)math.floor(SmoothHeight(p, x, z));
@@ -43,7 +79,19 @@ namespace Revoxel.World
             var fields = ComputeFields(p, x, z);
             var weights = new FixedList128Bytes<float>();
             ComputeWeights(p, fields, ref weights);
-            return HeightFrom(p, fields, weights);
+            return Shape(p, fields, weights, out _, out _, out _, out _);
+        }
+
+        // The height of the land before lakes and rivers shape it, voxels, and the inland
+        // field: what Hydrology.Plan reads.
+        public static float LandHeight(in TerrainParams p, int x, int z, out float inland)
+        {
+            var fields = ComputeFields(p, x, z);
+            var weights = new FixedList128Bytes<float>();
+            ComputeWeights(p, fields, ref weights);
+            inland = fields.Inland;
+            var land = HeightFrom(p, fields, weights);
+            return Clamp(Reef(p, fields.Pos, weights, land, out _, out _));
         }
 
         // Height, climate and biome of one column.
@@ -52,7 +100,15 @@ namespace Revoxel.World
             var fields = ComputeFields(p, x, z);
             var weights = new FixedList128Bytes<float>();
             ComputeWeights(p, fields, ref weights);
-            var height = HeightFrom(p, fields, weights);
+            var height = Shape(
+                p,
+                fields,
+                weights,
+                out var level,
+                out var body,
+                out var reef,
+                out var reefBiome
+            );
             return new TerrainSample
             {
                 Height = height,
@@ -65,6 +121,10 @@ namespace Revoxel.World
                 AltitudeMeters = fields.AltitudeMeters,
                 Waste = fields.Waste,
                 Biome = PickBiome(p, fields.Pos, weights),
+                WaterLevel = (int)math.floor(level),
+                Body = body,
+                Reef = reef,
+                ReefBiome = reefBiome,
             };
         }
 
@@ -113,10 +173,28 @@ namespace Revoxel.World
                 );
             ushort top;
             ushort soilId;
-            if (h <= p.SeaLevel + p.ShoreHeight)
+            if (h < sample.WaterLevel && sample.Body != WaterBody.Sea)
+            {
+                top = sample.Body == WaterBody.River ? p.RiverBed : p.LakeBed;
+                soilId = top;
+                soil = math.max(soil, 1);
+            }
+            else if (h <= p.SeaLevel + p.ShoreHeight)
             {
                 top = biome.Shore;
                 soilId = biome.Shore;
+                var reef = p.Biomes[sample.ReefBiome.Value];
+                if (
+                    h < p.SeaLevel
+                    && reef.ReefCorals.Length > 0
+                    && sample.Reef >= reef.ReefCoralMin
+                )
+                {
+                    var n = reef.ReefCorals.Length;
+                    top = reef.ReefCorals[math.clamp((int)(Patch(p, pos) * n), 0, n - 1)];
+                    soilId = reef.ReefRock;
+                    soil = math.max(soil, 1);
+                }
             }
             else
             {
@@ -228,31 +306,31 @@ namespace Revoxel.World
             return id;
         }
 
-        // What a chunk at height cy is, given the range of floored surface heights over its
-        // column. Uniform kinds need no per-voxel work; below the subsurface band every
-        // column is Stone (D-053, D-063).
+        // What a chunk at height cy is, given the ranges of floored surface heights and
+        // water levels over its column. Uniform kinds need no per-voxel work; below the
+        // subsurface band every column is Stone (D-053, D-063, D-070).
         public static ChunkKind Classify(
             in TerrainParams p,
-            int2 heightRange,
+            in ColumnRange range,
             int cy,
             out VoxelId id
         )
         {
             var yMin = cy * WorldConstants.ChunkSize;
             var yMax = yMin + WorldConstants.ChunkMask;
-            if (yMin >= math.max(heightRange.y, p.SeaLevel))
+            if (yMin >= math.max(range.Height.y, range.Water.y))
             {
                 id = VoxelId.Air;
                 return ChunkKind.UniformAir;
             }
 
-            if (yMax < heightRange.x - p.SubsurfaceDepth)
+            if (yMax < range.Height.x - p.SubsurfaceDepth)
             {
                 id = new VoxelId(p.Stone);
                 return ChunkKind.UniformStone;
             }
 
-            if (yMin >= heightRange.y && yMax < p.SeaLevel)
+            if (yMin >= range.Height.y && yMax < range.Water.x)
             {
                 id = new VoxelId(p.Water);
                 return ChunkKind.UniformWater;
@@ -281,15 +359,15 @@ namespace Revoxel.World
             }
         }
 
-        // Lowest and highest floored surface over the chunk column's own 32 x 32 columns.
-        public static int2 HeightRange(NativeArray<TerrainSample> samples)
+        // Floored surfaces and water levels over the chunk column's own 32 x 32 columns.
+        public static ColumnRange Range(NativeArray<TerrainSample> samples)
         {
-            var range = new int2(int.MaxValue, int.MinValue);
+            var range = ColumnRange.Empty;
             for (var z = 0; z < WorldConstants.ChunkSize; z++)
             for (var x = 0; x < WorldConstants.ChunkSize; x++)
             {
-                var h = (int)math.floor(samples[(x + 1) + SampleGridSize * (z + 1)].Height);
-                range = new int2(math.min(range.x, h), math.max(range.y, h));
+                var sample = samples[(x + 1) + SampleGridSize * (z + 1)];
+                range.Add((int)math.floor(sample.Height), sample.WaterLevel);
             }
 
             return range;
@@ -338,7 +416,7 @@ namespace Revoxel.World
                     var wy = origin.y + y;
                     var id =
                         wy < h ? MaterialAt(p, column, wy)
-                        : wy < p.SeaLevel ? p.Water
+                        : wy < sample.WaterLevel ? p.Water
                         : VoxelId.Air.Value;
                     dense[Coords.LocalIndex(x, y, z)] = id;
                 }
@@ -351,36 +429,36 @@ namespace Revoxel.World
         // voxel at height y0 is solid when y0 + s / 2 is below the surface there, and takes
         // the material of the highest solid voxel it holds, the surface voxel for the top
         // solid coarse voxel of its column (D-056). Non-solid coarse voxels are water below
-        // sea level. Level 0 gives exactly the full-resolution voxels.
+        // the water level there. Level 0 gives exactly the full-resolution voxels.
 
         // Samples of the padded coarse columns plus one more ring, for slopes.
         public const int DetailSampleGridSize = WorldConstants.PaddedSize + 2;
         public const int DetailSampleGridCount = DetailSampleGridSize * DetailSampleGridSize;
 
-        // Lowest and highest floored surface over the cell's 32 x 32 coarse column centers,
-        // widened by one coarse voxel each way (voxel units).
-        public static int2 DetailHeightRange(in TerrainParams p, int2 cell, int level)
+        // Floored surfaces over the cell's 32 x 32 coarse column centers, widened by one
+        // coarse voxel each way, and their water levels (voxel units).
+        public static ColumnRange DetailRange(in TerrainParams p, int2 cell, int level)
         {
             var s = 1 << level;
             var origin = cell * (WorldConstants.ChunkSize * s) + (s >> 1);
-            var range = new int2(int.MaxValue, int.MinValue);
+            var range = ColumnRange.Empty;
             for (var z = 0; z < WorldConstants.ChunkSize; z++)
             for (var x = 0; x < WorldConstants.ChunkSize; x++)
             {
-                var h = SurfaceHeight(p, origin.x + x * s, origin.y + z * s);
-                range = new int2(math.min(range.x, h), math.max(range.y, h));
+                var sample = Sample(p, origin.x + x * s, origin.y + z * s);
+                range.Add((int)math.floor(sample.Height), sample.WaterLevel);
             }
 
-            return range + new int2(-s, s);
+            return range.WidenedHeights(s);
         }
 
-        // False when the chunk can show nothing: above both the highest surface and sea
-        // level, water with water above it, or more than wallDepth coarse voxels (plus the
-        // subsurface band) below the lowest surface. Chunks just below the surface are
-        // meshed for their side walls.
+        // False when the chunk can show nothing: above both the highest surface and the
+        // highest water, water with water above it everywhere, or more than wallDepth
+        // coarse voxels (plus the subsurface band) below the lowest surface. Chunks just
+        // below the surface are meshed for their side walls.
         public static bool DetailChunkNeedsMesh(
             in TerrainParams p,
-            int2 heightRange,
+            in ColumnRange range,
             int cy,
             int level,
             int wallDepth
@@ -389,18 +467,18 @@ namespace Revoxel.World
             var s = 1 << level;
             var yMin = cy * WorldConstants.ChunkSize * s;
             var yMax = yMin + WorldConstants.ChunkSize * s - 1;
-            if (yMin >= math.max(heightRange.y, p.SeaLevel))
+            if (yMin >= math.max(range.Height.y, range.Water.y))
             {
                 return false;
             }
 
-            if (yMin >= heightRange.y && yMax < p.SeaLevel)
+            if (yMin >= range.Height.y && yMax < range.Water.x)
             {
-                // Water: only the chunk under the sea surface shows its top.
-                return yMax + 1 + (s >> 1) >= p.SeaLevel;
+                // Water: only a chunk under the lowest water surface shows its top.
+                return yMax + 1 + (s >> 1) >= range.Water.x;
             }
 
-            return yMax >= heightRange.x - p.SubsurfaceDepth - wallDepth * s;
+            return yMax >= range.Height.x - p.SubsurfaceDepth - wallDepth * s;
         }
 
         // Fills the 34^3 meshing input of a level-L chunk straight from the generator. With
@@ -477,7 +555,7 @@ namespace Revoxel.World
                     }
                     else
                     {
-                        id = y0 + half < p.SeaLevel ? p.Water : VoxelId.Air.Value;
+                        id = y0 + half < sample.WaterLevel ? p.Water : VoxelId.Air.Value;
                     }
 
                     padded[Coords.PaddedIndex(x, y, z)] = id;
@@ -657,11 +735,85 @@ namespace Revoxel.World
                 height = math.lerp(height, (step + riser) * p.TerraceStep, terrace);
             }
 
-            return math.clamp(
-                p.SeaLevel + height,
+            return p.SeaLevel + height;
+        }
+
+        // Land, reef heads, then lakes and rivers: the final continuous height.
+        private static float Shape(
+            in TerrainParams p,
+            in Fields f,
+            in FixedList128Bytes<float> weights,
+            out float waterLevel,
+            out WaterBody body,
+            out float reef,
+            out BiomeId reefBiome
+        )
+        {
+            var land = Clamp(
+                Reef(p, f.Pos, weights, HeightFrom(p, f, weights), out reef, out reefBiome)
+            );
+            // River valley walls as steep as the biomes say (D-076), blended by weight.
+            var wallRun = 0f;
+            for (var i = 0; i < weights.Length; i++)
+            {
+                wallRun += weights[i] * p.Biomes[i].RiverWallRun;
+            }
+
+            Hydrology.Apply(p, f.Pos, land, wallRun, out var height, out waterLevel, out body);
+            return Clamp(height);
+        }
+
+        private static float Clamp(float height) =>
+            math.clamp(
+                height,
                 WorldConstants.ChunkSize,
                 WorldConstants.WorldHeightVoxels - WorldConstants.ChunkSize
             );
+
+        // Coral heads (D-072): where a reef biome weighs, patches of the floor rise by up to
+        // the biome's reef height, never closer to the sea surface than its clearance.
+        private static float Reef(
+            in TerrainParams p,
+            float2 pos,
+            in FixedList128Bytes<float> weights,
+            float height,
+            out float cover,
+            out BiomeId reefBiome
+        )
+        {
+            cover = 0f;
+            reefBiome = default;
+            var add = 0f;
+            var cap = float.MaxValue;
+            for (var i = 0; i < weights.Length; i++)
+            {
+                var b = p.Biomes[i];
+                var w = weights[i];
+                if (b.ReefHeight <= 0f || w < ReefMinWeight)
+                {
+                    continue;
+                }
+
+                var q = pos * b.ReefFrequency + p.ReefOffset;
+                var n =
+                    0.5f
+                    + 0.5f
+                        * (
+                            ReefCoarse * noise.snoise(q)
+                            + (1f - ReefCoarse) * noise.snoise(q * ReefFineRatio + ReefFineShift)
+                        );
+                var head = math.smoothstep(1f - b.ReefCover, 1f - b.ReefCover + ReefEdge, n);
+                add += w * b.ReefHeight * head;
+                if (w * head > cover)
+                {
+                    cover = w * head;
+                    reefBiome = new BiomeId((byte)i);
+                }
+
+                cap = math.min(cap, p.SeaLevel - b.ReefClearance);
+            }
+
+            return add > 0f ? math.max(height, math.min(height + add, cap)) : height;
         }
 
         // The heaviest biome; where the second comes close, a smooth noise moves the border

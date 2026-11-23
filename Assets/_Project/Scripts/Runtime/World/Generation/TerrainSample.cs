@@ -1,7 +1,8 @@
 namespace Revoxel.World
 {
     // What the generator knows about one voxel column before filling it (D-062): the
-    // continuous surface height, the climate fields and the column's biome.
+    // continuous surface height, the climate fields, the column's biome and its water
+    // (D-070).
     public struct TerrainSample
     {
         // Continuous surface height, voxels; y below its floor is solid.
@@ -26,5 +27,17 @@ namespace Revoxel.World
         public float Waste;
 
         public BiomeId Biome;
+
+        // Water fills the non-solid voxels below this height, voxels (D-070): sea level, or
+        // the surface of the lake or river the column belongs to.
+        public int WaterLevel;
+
+        public WaterBody Body;
+
+        // How much of a coral head stands on the column, 0 to 1 (D-072), and the reef biome
+        // whose corals it carries.
+        public float Reef;
+
+        public BiomeId ReefBiome;
     }
 }

@@ -1,4 +1,5 @@
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace Revoxel.World
@@ -72,6 +73,53 @@ namespace Revoxel.World
         public FixedList32Bytes<ushort> PocketTypes;
         public FixedList4096Bytes<BiomeParams> Biomes;
 
+        // Rivers and lakes (PLAN-05, D-070, D-071), voxels; planned by Hydrology.Plan.
+        public int MaxRivers;
+        public int SpringCandidates;
+        public float SpringMinAltitude;
+        public float SpringMinInland;
+        public float SourceSpacing;
+        public float RiverStep;
+        public int RiverMaxSteps;
+        public int RiverMinSteps;
+        public float RiverTurn;
+        public float RiverOutwardBias;
+        public float RiverInset;
+        public float RiverMaxCut;
+        public float RiverRisePenalty;
+        public float2 RiverHalfWidth;
+        public float2 RiverDepth;
+        public float FallMin;
+        public float FallSteepness;
+        public float JoinDistance;
+        public float Meander;
+        public float MeanderFrequency;
+        public float BankWidth;
+        public float BankLip;
+        public float ShoreCut;
+        public float ShoreRun;
+        public float MaxWallWidth;
+
+        // Farthest a river changes the ground from its path, voxels (set by Hydrology.Plan).
+        public float RiverReach;
+        public int MaxLakes;
+        public int LakeCandidates;
+        public float2 LakeRadius;
+        public float LakeMinInland;
+        public float LakeMinAltitude;
+        public float LakeMaxRelief;
+        public float LakeDepth;
+        public float LakeShape;
+        public float LakeShapeFrequency;
+        public float LakeRimMargin;
+        public float LakeLevelStep;
+        public float LakeOutletShare;
+        public ushort RiverBed;
+        public ushort LakeBed;
+        public FixedList4096Bytes<RiverNode> RiverNodes;
+        public FixedList512Bytes<River> Rivers;
+        public FixedList512Bytes<Lake> Lakes;
+
         // Seeded noise offsets, one per field.
         public float2 WarpOffsetX;
         public float2 WarpOffsetZ;
@@ -89,6 +137,10 @@ namespace Revoxel.World
         public float2 FoldOffset;
         public float2 WobbleOffset;
         public float2 ThinningOffset;
+        public float2 ReefOffset;
+        public float2 MeanderOffsetX;
+        public float2 MeanderOffsetZ;
+        public float2 LakeShapeOffset;
 
         // Noise offsets stay small so float precision holds at the island edge.
         private const float OffsetRange = 1000f;
@@ -179,6 +231,10 @@ namespace Revoxel.World
                 WobbleOffset = random.NextFloat2(-OffsetRange, OffsetRange),
                 ThinningOffset = random.NextFloat2(-OffsetRange, OffsetRange),
                 PatchEdgeOffset = random.NextFloat2(-OffsetRange, OffsetRange),
+                ReefOffset = random.NextFloat2(-OffsetRange, OffsetRange),
+                MeanderOffsetX = random.NextFloat2(-OffsetRange, OffsetRange),
+                MeanderOffsetZ = random.NextFloat2(-OffsetRange, OffsetRange),
+                LakeShapeOffset = random.NextFloat2(-OffsetRange, OffsetRange),
             };
 
             foreach (var type in settings.PocketTypes)
@@ -191,7 +247,60 @@ namespace Revoxel.World
                 p.Biomes.Add(BiomeParams.Create(biome));
             }
 
+            var water = settings.WaterSettings;
+            if (water != null)
+            {
+                SetWater(ref p, water);
+                using var plan = new NativeReference<TerrainParams>(p, Allocator.TempJob);
+                new HydrologyPlanJob { Params = plan }.Run();
+                p = plan.Value;
+            }
+
             return p;
+        }
+
+        private static void SetWater(ref TerrainParams p, WaterSettings w)
+        {
+            const float v = WorldConstants.VoxelsPerMeter;
+            p.MaxRivers = w.MaxRivers;
+            p.SpringCandidates = w.SpringCandidates;
+            p.SpringMinAltitude = w.SpringMinAltitudeMeters * v;
+            p.SpringMinInland = w.SpringMinInland;
+            p.SourceSpacing = w.SourceSpacingMeters * v;
+            p.RiverStep = w.RiverStepMeters * v;
+            p.RiverMaxSteps = w.RiverMaxSteps;
+            p.RiverMinSteps = w.RiverMinSteps;
+            p.RiverTurn = math.radians(w.RiverTurnDegrees);
+            p.RiverOutwardBias = w.RiverOutwardBias;
+            p.RiverInset = w.RiverInsetMeters * v;
+            p.RiverMaxCut = w.RiverMaxCutMeters * v;
+            p.RiverRisePenalty = w.RiverRisePenalty;
+            p.RiverHalfWidth = (float2)w.RiverHalfWidthMeters * v;
+            p.RiverDepth = (float2)w.RiverDepthMeters * v;
+            p.FallMin = w.FallMinMeters * v;
+            p.FallSteepness = w.FallSteepness;
+            p.JoinDistance = w.JoinDistanceMeters * v;
+            p.Meander = w.MeanderMeters * v;
+            p.MeanderFrequency = Frequency(w.MeanderScaleMeters);
+            p.BankWidth = w.BankWidthMeters * v;
+            p.BankLip = w.BankLipMeters * v;
+            p.ShoreCut = w.ShoreCutMeters * v;
+            p.ShoreRun = w.ShoreRun;
+            p.MaxWallWidth = w.MaxWallWidthMeters * v;
+            p.MaxLakes = w.MaxLakes;
+            p.LakeCandidates = w.LakeCandidates;
+            p.LakeRadius = (float2)w.LakeRadiusMeters * v;
+            p.LakeMinInland = w.LakeMinInland;
+            p.LakeMinAltitude = w.LakeMinAltitudeMeters * v;
+            p.LakeMaxRelief = w.LakeMaxReliefMeters * v;
+            p.LakeDepth = w.LakeDepthMeters * v;
+            p.LakeShape = w.LakeShapeNoise;
+            p.LakeShapeFrequency = Frequency(w.LakeShapeScaleMeters);
+            p.LakeRimMargin = w.LakeRimMarginMeters * v;
+            p.LakeLevelStep = math.max(1f, math.round(w.LakeLevelStepMeters * v));
+            p.LakeOutletShare = w.LakeOutletShare;
+            p.RiverBed = w.RiverBed != null ? w.RiverBed.Id.Value : p.Stone;
+            p.LakeBed = w.LakeBed != null ? w.LakeBed.Id.Value : p.Stone;
         }
 
         private static float Frequency(float scaleMeters) =>
