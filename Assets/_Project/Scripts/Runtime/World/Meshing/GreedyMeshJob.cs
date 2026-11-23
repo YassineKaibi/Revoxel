@@ -12,21 +12,13 @@ namespace Revoxel.World
     // solid and B is not. Per direction and slice, faces with the same voxel id and the
     // same four corner occlusion values are merged greedily into rectangles; collision
     // faces merge by solidity only. Occlusion comes from the layer in front of the face,
-    // so it appears only at concave corners, and only from neighbors at least two voxels
-    // deep along the face normal (D-066): a one-voxel step on gentle ground does not draw
-    // a dark contour line. The side faces of a one-voxel step are marked (their id plus
-    // StepFlag), so the shader lights them like the ground around them (D-066).
+    // so it appears only at concave corners.
     [BurstCompile]
     public struct GreedyMeshJob : IJob
     {
         private const int Size = WorldConstants.ChunkSize;
         private const int IdBits = 10;
         private const uint IdMask = (1u << IdBits) - 1u;
-        private const int StepBit = IdBits + 8;
-
-        // Added to the voxel id in the vertex data of one-voxel step faces; ids stay below
-        // MaxVoxelTypes, so the shader tells them apart (D-066).
-        public const int StepFlag = WorldConstants.MaxVoxelTypes;
 
         [ReadOnly]
         public NativeArray<ushort> Padded;
@@ -124,20 +116,12 @@ namespace Revoxel.World
                 }
 
                 // Corners 0 to 3 at (-u, -v), (+u, -v), (+u, +v), (-u, +v).
-                var ao0 = Occlusion(front, normal, -du, -dv);
-                var ao1 = Occlusion(front, normal, du, -dv);
-                var ao2 = Occlusion(front, normal, du, dv);
-                var ao3 = Occlusion(front, normal, -du, dv);
-                // A one-voxel step: a horizontal face of the top voxel of its column, with
-                // ground right below the voxel in front.
-                var step =
-                    axis != 1
-                    && Opaque(a)
-                    && !Opaque(At(pos + new int3(0, 1, 0)))
-                    && Opaque(At(front - new int3(0, 1, 0)));
+                var ao0 = Occlusion(front, -du, -dv);
+                var ao1 = Occlusion(front, du, -dv);
+                var ao2 = Occlusion(front, du, dv);
+                var ao3 = Occlusion(front, -du, dv);
                 renderMask[cell] =
                     a
-                    | (step ? 1u << StepBit : 0u)
                     | (ao0 << IdBits)
                     | (ao1 << (IdBits + 2))
                     | (ao2 << (IdBits + 4))
@@ -146,26 +130,12 @@ namespace Revoxel.World
         }
 
         // 3 is open, 0 fully occluded (both sides opaque).
-        private uint Occlusion(int3 front, int3 normal, int3 sideU, int3 sideV)
+        private uint Occlusion(int3 front, int3 sideU, int3 sideV)
         {
-            var side1 = Occludes(front + sideU, normal) ? 1u : 0u;
-            var side2 = Occludes(front + sideV, normal) ? 1u : 0u;
-            var corner = Occludes(front + sideU + sideV, normal) ? 1u : 0u;
+            var side1 = Opaque(At(front + sideU)) ? 1u : 0u;
+            var side2 = Opaque(At(front + sideV)) ? 1u : 0u;
+            var corner = Opaque(At(front + sideU + sideV)) ? 1u : 0u;
             return side1 == 1u && side2 == 1u ? 0u : 3u - (side1 + side2 + corner);
-        }
-
-        // An opaque neighbor occludes when the voxel beyond it along the normal is opaque
-        // too (D-066). Beyond the padding nothing is known: no occlusion, so a missing
-        // corner shadow at a chunk's outer layer is the worst case, never a dark line.
-        private bool Occludes(int3 cell, int3 normal)
-        {
-            if (!Opaque(At(cell)))
-            {
-                return false;
-            }
-
-            var beyond = cell + normal;
-            return math.all(beyond >= -1) && math.all(beyond <= Size) && Opaque(At(beyond));
         }
 
         private void EmitRender(
@@ -198,7 +168,7 @@ namespace Revoxel.World
                     (key >> (IdBits + 4)) & 3u,
                     (key >> (IdBits + 6)) & 3u
                 );
-                var id = (key & IdMask) + ((key >> StepBit) & 1u) * (uint)StepFlag;
+                var id = key & IdMask;
                 var start = vertices.Length;
                 for (var c = 0; c < 4; c++)
                 {

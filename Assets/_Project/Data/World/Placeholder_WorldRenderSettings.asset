@@ -14,4 +14,3 @@ MonoBehaviour:
   m_EditorClassIdentifier: Revoxel.World::Revoxel.World.WorldRenderSettings
   _corruptionTint: {r: 0.5411765, g: 0.5294118, b: 0.47058824, a: 1}
   _aoMin: 0.55
-  _stepNormalBend: 0.85

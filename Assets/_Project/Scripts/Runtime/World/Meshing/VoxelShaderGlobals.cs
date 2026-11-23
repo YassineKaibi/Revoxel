@@ -14,7 +14,6 @@ namespace Revoxel.World
         public static readonly int CorruptionId = Shader.PropertyToID("_RevoxelCorruption");
         public static readonly int CorruptionTintId = Shader.PropertyToID("_RevoxelCorruptionTint");
         public static readonly int AoMinId = Shader.PropertyToID("_RevoxelAoMin");
-        public static readonly int StepNormalBendId = Shader.PropertyToID("_RevoxelStepNormalBend");
 
         // The table from VoxelRegistry.CreateMaterialTable; the caller owns it.
         public static void SetMaterialTable(Texture2D table)
@@ -36,7 +35,6 @@ namespace Revoxel.World
             SetCorruption(1f);
             Shader.SetGlobalVector(CorruptionTintId, settings.CorruptionTint.linear);
             Shader.SetGlobalFloat(AoMinId, settings.AoMin);
-            Shader.SetGlobalFloat(StepNormalBendId, settings.StepNormalBend);
         }
     }
 }

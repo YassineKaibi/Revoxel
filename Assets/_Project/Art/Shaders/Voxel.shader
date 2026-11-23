@@ -48,10 +48,6 @@ Shader "Revoxel/Voxel"
             float _RevoxelCorruption;
             float4 _RevoxelCorruptionTint;
             float _RevoxelAoMin;
-            float _RevoxelStepNormalBend;
-
-            // GreedyMeshJob.StepFlag: added to the id of one-voxel step faces (D-066).
-            #define REVOXEL_STEP_FLAG 1024
 
             struct Attributes
             {
@@ -140,8 +136,7 @@ Shader "Revoxel/Voxel"
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
                 int id = (int)round(input.materialAo.x);
-                bool step = id >= REVOXEL_STEP_FLAG;
-                id = clamp(step ? id - REVOXEL_STEP_FLAG : id, 0, (int)_RevoxelMaterialTableWidth - 1);
+                id = clamp(id, 0, (int)_RevoxelMaterialTableWidth - 1);
                 half3 baseColor = LOAD_TEXTURE2D(_RevoxelMaterialTable, int2(id, 0)).rgb;
                 half3 secondary = LOAD_TEXTURE2D(_RevoxelMaterialTable, int2(id, 1)).rgb;
                 float4 material = LOAD_TEXTURE2D(_RevoxelMaterialTable, int2(id, 2));
@@ -160,23 +155,10 @@ Shader "Revoxel/Voxel"
                 half occlusion = lerp(_RevoxelAoMin, 1.0, saturate(input.materialAo.y));
 
                 float3 normalWS = normalize(input.normalWS);
-
-                // One-voxel steps are lit like the ground around them, so gentle slopes do not
-                // show a dark contour line at every voxel of rise (D-066).
-                if (step)
-                {
-                    normalWS = normalize(lerp(normalWS, float3(0.0, 1.0, 0.0), _RevoxelStepNormalBend));
-                }
                 float4 shadowCoord = TransformWorldToShadowCoord(input.positionWS);
                 Light mainLight = GetMainLight(shadowCoord);
                 half ndotl = saturate(dot(normalWS, mainLight.direction));
-
-                // A step face lies in the shadow of its own voxel; lit like the ground, it
-                // takes the ground's light too.
-                half shadow = step
-                    ? lerp(mainLight.shadowAttenuation, 1.0, _RevoxelStepNormalBend)
-                    : mainLight.shadowAttenuation;
-                half3 direct = mainLight.color * (ndotl * shadow * mainLight.distanceAttenuation);
+                half3 direct = mainLight.color * (ndotl * mainLight.shadowAttenuation * mainLight.distanceAttenuation);
                 half3 ambient = SampleSH(normalWS);
 
                 #if defined(_SCREEN_SPACE_OCCLUSION)

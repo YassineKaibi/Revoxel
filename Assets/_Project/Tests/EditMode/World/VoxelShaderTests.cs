@@ -59,10 +59,6 @@ namespace Revoxel.Tests.EditMode
                     Is.EqualTo(settings.AoMin)
                 );
                 Assert.That(
-                    Shader.GetGlobalFloat(VoxelShaderGlobals.StepNormalBendId),
-                    Is.EqualTo(settings.StepNormalBend)
-                );
-                Assert.That(
                     (Color)Shader.GetGlobalVector(VoxelShaderGlobals.CorruptionTintId),
                     Is.EqualTo(settings.CorruptionTint.linear)
                 );
