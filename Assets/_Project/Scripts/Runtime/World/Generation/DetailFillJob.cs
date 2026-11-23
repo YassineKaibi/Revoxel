@@ -14,14 +14,14 @@ namespace Revoxel.World
         public ChunkCoord Coord;
         public bool SideWalls;
 
-        public NativeArray<float> Heights;
+        public NativeArray<TerrainSample> Samples;
 
         [WriteOnly]
         public NativeArray<ushort> Padded;
 
         public void Execute()
         {
-            TerrainGenerator.FillDetailPadded(Params, Level, Coord, SideWalls, Heights, Padded);
+            TerrainGenerator.FillDetailPadded(Params, Level, Coord, SideWalls, Samples, Padded);
         }
     }
 }

@@ -10,6 +10,12 @@ namespace Revoxel.Tests.EditMode
         public const string RegistryPath = VoxelsFolder + "/VoxelRegistry.asset";
         public const string MaterialPath = "Assets/_Project/Art/Materials/Mat_Voxel.mat";
 
+        public const string BiomesFolder = "Assets/_Project/Data/Biomes";
+        public const string BiomeRegistryPath = BiomesFolder + "/BiomeRegistry.asset";
+
+        public static BiomeRegistry LoadBiomeRegistry() =>
+            AssetDatabase.LoadAssetAtPath<BiomeRegistry>(BiomeRegistryPath);
+
         public const string TerrainSettingsPath =
             "Assets/_Project/Data/World/Placeholder_TerrainSettings.asset";
 

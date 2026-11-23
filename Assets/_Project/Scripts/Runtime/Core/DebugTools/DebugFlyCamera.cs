@@ -114,7 +114,7 @@ namespace Revoxel.Core
 
             _body.height = _bodyHeight;
             _body.radius = _bodyRadius;
-            _body.center = new Vector3(0f, _bodyHeight * 0.5f - _eyeHeight, 0f);
+            KeepBodyUnderEyes();
             _body.stepOffset = _stepHeight;
             _body.slopeLimit = 50f;
             _body.skinWidth = 0.03f;
@@ -224,6 +224,7 @@ namespace Revoxel.Core
                 jump = keyboard.spaceKey.wasPressedThisFrame;
             }
 
+            KeepBodyUnderEyes();
             var speed = _walkSpeed * (run ? _runMultiplier : 1f);
             var horizontal = Quaternion.Euler(0f, _yaw, 0f) * Vector3.ClampMagnitude(input, 1f);
             if (_body.isGrounded)
@@ -279,6 +280,13 @@ namespace Revoxel.Core
 
             transform.position = new Vector3(position.x, ground + _eyeHeight + 0.05f, position.z);
         }
+
+        // The capsule stays upright but its center turns with the camera; counter-rotate it
+        // so the body stands under the eyes whatever the pitch.
+        private void KeepBodyUnderEyes() =>
+            _body.center =
+                Quaternion.Inverse(transform.rotation)
+                * new Vector3(0f, _bodyHeight * 0.5f - _eyeHeight, 0f);
 
         private Vector3 Feet() => transform.position + Vector3.down * (_eyeHeight - 0.05f);
 #else

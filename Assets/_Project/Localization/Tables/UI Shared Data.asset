@@ -55,6 +55,42 @@ MonoBehaviour:
     m_Key: ui.debug.detail_memory
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947397
+    m_Key: ui.debug.biome
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947398
+    m_Key: biome.coast.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947399
+    m_Key: biome.reef.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947400
+    m_Key: biome.plains.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947401
+    m_Key: biome.forest.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947402
+    m_Key: biome.wetland.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947403
+    m_Key: biome.canyon.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947404
+    m_Key: biome.mountains.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947405
+    m_Key: biome.waste_lands.name
+    m_Metadata:
+      m_Items: []
   m_Metadata:
     m_Items: []
   m_KeyGenerator:

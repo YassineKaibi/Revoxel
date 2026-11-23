@@ -114,9 +114,8 @@ namespace Revoxel.Tests.EditMode
                         }
 
                         var id = padded[Coords.PaddedIndex(x, top % Size, z)];
-                        var soil = TerrainGenerator.SoilDepth(p, wx, wz);
-                        var sandy = h <= p.SeaLevel + p.SandAbove;
-                        var surface = TerrainGenerator.MaterialAt(p, h - 1, h, soil, sandy);
+                        var column = TerrainGenerator.Column(p, wx, wz);
+                        var surface = TerrainGenerator.MaterialAt(p, column, h - 1);
                         Assert.That(id, Is.EqualTo(surface), $"level {level} column ({wx}, {wz})");
                         checkedColumns++;
                     }
@@ -265,19 +264,19 @@ namespace Revoxel.Tests.EditMode
             bool walls
         )
         {
-            using var heights = new NativeArray<float>(
-                TerrainGenerator.DetailHeightGridCount,
+            using var samples = new NativeArray<TerrainSample>(
+                TerrainGenerator.DetailSampleGridCount,
                 Allocator.Temp
             );
             using var padded = new NativeArray<ushort>(WorldConstants.PaddedVoxels, Allocator.Temp);
-            TerrainGenerator.FillDetailPadded(p, level, coord, walls, heights, padded);
+            TerrainGenerator.FillDetailPadded(p, level, coord, walls, samples, padded);
             return padded.ToArray();
         }
 
         private static ushort[] FillJob(in TerrainParams p, int level, ChunkCoord coord, bool walls)
         {
-            using var heights = new NativeArray<float>(
-                TerrainGenerator.DetailHeightGridCount,
+            using var samples = new NativeArray<TerrainSample>(
+                TerrainGenerator.DetailSampleGridCount,
                 Allocator.TempJob
             );
             using var padded = new NativeArray<ushort>(
@@ -290,7 +289,7 @@ namespace Revoxel.Tests.EditMode
                 Level = level,
                 Coord = coord,
                 SideWalls = walls,
-                Heights = heights,
+                Samples = samples,
                 Padded = padded,
             }.Run();
             return padded.ToArray();

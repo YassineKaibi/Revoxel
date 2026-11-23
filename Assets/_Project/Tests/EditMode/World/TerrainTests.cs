@@ -4,8 +4,6 @@ using Revoxel.World;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
-using UnityEditor;
-using UnityEngine;
 
 namespace Revoxel.Tests.EditMode
 {
@@ -100,7 +98,6 @@ namespace Revoxel.Tests.EditMode
             var settings = WorldAssets.LoadTerrainSettings();
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
             var water = Id(settings.Water).Value;
-            var grass = Id(settings.Grass).Value;
             var seaLevel = (int)math.round(settings.SeaLevelMeters * WorldConstants.VoxelsPerMeter);
             var chunkYs = new List<int>();
             for (var cy = 0; cy <= seaLevel / WorldConstants.ChunkSize + 2; cy++)
@@ -109,84 +106,33 @@ namespace Revoxel.Tests.EditMode
             }
 
             chunkYs.Add(WorldConstants.ChunksY - 1);
+            var origin = new int2(999, 999) * WorldConstants.ChunkSize;
             foreach (var cy in chunkYs)
             {
                 var coord = new ChunkCoord(999, cy, 999);
                 using var dense = Dense(p, coord);
                 for (var i = 0; i < dense.Length; i++)
                 {
-                    var y = Coords.LocalFromIndex(i).y + cy * WorldConstants.ChunkSize;
-                    var expected = y < seaLevel ? water : VoxelId.Air.Value;
-
-                    Assert.That(dense[i], Is.Not.EqualTo(grass));
-                    Assert.That(dense[i], Is.EqualTo(expected), $"chunk {coord}, voxel y {y}");
-                }
-            }
-        }
-
-        [Test]
-        public void Terrain_SoilDepth_Varies()
-        {
-            var steep = Object.Instantiate(WorldAssets.LoadTerrainSettings());
-            try
-            {
-                var so = new SerializedObject(steep);
-                so.FindProperty("_baseScaleMeters").floatValue = 60f;
-                so.ApplyModifiedPropertiesWithoutUndo();
-                Assert.That(steep.TryValidate(out var error), Is.True, error);
-                var p = TerrainParams.Create(new WorldSeed(Seeds.Fixture), steep);
-
-                var depths = new HashSet<int>();
-                long steepSum = 0,
-                    steepCount = 0,
-                    flatSum = 0,
-                    flatCount = 0;
-                for (var gz = 0; gz < 64; gz++)
-                for (var gx = 0; gx < 64; gx++)
-                {
-                    var x = gx * 37;
-                    var z = gz * 37;
-                    var h = TerrainGenerator.SurfaceHeight(p, x, z);
-                    if (h <= p.SeaLevel + p.SandAbove)
-                    {
-                        continue;
-                    }
-
-                    var soil = TerrainGenerator.SoilDepth(p, x, z);
-                    depths.Add(soil);
-                    var rise = math.max(
-                        math.max(
-                            math.abs(TerrainGenerator.SurfaceHeight(p, x + 1, z) - h),
-                            math.abs(TerrainGenerator.SurfaceHeight(p, x - 1, z) - h)
-                        ),
-                        math.max(
-                            math.abs(TerrainGenerator.SurfaceHeight(p, x, z + 1) - h),
-                            math.abs(TerrainGenerator.SurfaceHeight(p, x, z - 1) - h)
-                        )
+                    var local = Coords.LocalFromIndex(i);
+                    var y = local.y + cy * WorldConstants.ChunkSize;
+                    var floor = TerrainGenerator.SurfaceHeight(
+                        p,
+                        origin.x + local.x,
+                        origin.y + local.z
                     );
-                    if (rise >= 2)
+
+                    Assert.That(floor, Is.GreaterThan(0).And.LessThan(seaLevel), "sea floor");
+                    if (y < floor)
                     {
-                        steepSum += soil;
-                        steepCount++;
+                        Assert.That(dense[i], Is.Not.EqualTo(water), $"chunk {coord}, y {y}");
+                        Assert.That(dense[i], Is.Not.EqualTo(VoxelId.Air.Value));
                     }
                     else
                     {
-                        flatSum += soil;
-                        flatCount++;
+                        var expected = y < seaLevel ? water : VoxelId.Air.Value;
+                        Assert.That(dense[i], Is.EqualTo(expected), $"chunk {coord}, voxel y {y}");
                     }
                 }
-
-                Assert.That(depths.Count, Is.GreaterThanOrEqualTo(4));
-                Assert.That(steepCount, Is.GreaterThan(10), "too few steep columns sampled");
-                Assert.That(flatCount, Is.GreaterThan(10), "too few flat columns sampled");
-                Assert.That(
-                    (double)steepSum / steepCount,
-                    Is.LessThan((double)flatSum / flatCount)
-                );
-            }
-            finally
-            {
-                Object.DestroyImmediate(steep);
             }
         }
 

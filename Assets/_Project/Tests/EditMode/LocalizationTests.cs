@@ -70,6 +70,7 @@ namespace Revoxel.Tests.EditMode
                 Revoxel.UI.DebugOverlay.VoxelMemoryKey,
                 Revoxel.UI.DebugOverlay.DetailChunksKey,
                 Revoxel.UI.DebugOverlay.DetailMemoryKey,
+                Revoxel.UI.DebugOverlay.BiomeKey,
             };
 
             foreach (var key in keys)
@@ -80,6 +81,30 @@ namespace Revoxel.Tests.EditMode
             // Retired by D-054.
             Assert.That(shared.Contains("ui.debug.chunks"), Is.False);
             Assert.That(shared.Contains("ui.debug.dirty_queue"), Is.False);
+        }
+
+        // D-065: the overlay's biome line and every biome name, in French and English.
+        [Test]
+        public void Localization_BiomeNamesAndOverlayKey_Exist()
+        {
+            var collection = LocalizationEditorSettings.GetStringTableCollection(
+                Revoxel.UI.DebugOverlay.TableName
+            );
+            var keys = WorldAssets
+                .LoadBiomeRegistry()
+                .Biomes.Select(biome => biome.NameKey)
+                .Append(Revoxel.UI.DebugOverlay.BiomeKey);
+            foreach (var key in keys)
+            {
+                var shared = collection.SharedData.GetEntry(key);
+                Assert.That(shared, Is.Not.Null, key);
+                foreach (var code in RequiredCodes)
+                {
+                    var table = (StringTable)collection.GetTable(code);
+                    var entry = table.GetEntry(shared.Id);
+                    Assert.That(entry?.Value, Is.Not.Null.And.Not.Empty, $"{key} ({code})");
+                }
+            }
         }
     }
 }

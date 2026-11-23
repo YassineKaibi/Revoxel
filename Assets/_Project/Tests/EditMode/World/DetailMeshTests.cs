@@ -196,8 +196,8 @@ namespace Revoxel.Tests.EditMode
         private void BuildCell(in TerrainParams p, int level, int2 cell, bool walls)
         {
             var range = TerrainGenerator.DetailHeightRange(p, cell, level);
-            using var heights = new NativeArray<float>(
-                TerrainGenerator.DetailHeightGridCount,
+            using var samples = new NativeArray<TerrainSample>(
+                TerrainGenerator.DetailSampleGridCount,
                 Allocator.TempJob
             );
             using var padded = new NativeArray<ushort>(
@@ -218,7 +218,7 @@ namespace Revoxel.Tests.EditMode
                     Level = level,
                     Coord = coord,
                     SideWalls = walls,
-                    Heights = heights,
+                    Samples = samples,
                     Padded = padded,
                 }.Run();
                 var meshes = Mesh.AllocateWritableMeshData(2);

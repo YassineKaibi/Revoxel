@@ -279,6 +279,32 @@ namespace Revoxel.World
             return true;
         }
 
+        // Generated biome and climate of the column under a position, meters (D-062; edits
+        // not included). False when the terrain settings are missing.
+        public bool TrySampleBiome(float3 positionMeters, out TerrainSample sample)
+        {
+            if (_terrainSettings == null || _terrainSettings.Biomes == null)
+            {
+                sample = default;
+                return false;
+            }
+
+            var p = _streaming
+                ? _params
+                : TerrainParams.Create(new WorldSeed(_seed), _terrainSettings);
+            var voxel = Coords.WorldPositionToVoxel(positionMeters);
+            sample = BiomeMap.Sample(p, voxel.x, voxel.z);
+            return true;
+        }
+
+        public bool TryGetBiome(BiomeId id, out Biome biome)
+        {
+            biome = null;
+            return _terrainSettings != null
+                && _terrainSettings.Biomes != null
+                && _terrainSettings.Biomes.TryGet(id, out biome);
+        }
+
         public bool IsColumnLoaded(int2 column) =>
             _columns.TryGetValue(column, out var c) && c.Stage == ColumnStage.Loaded;
 

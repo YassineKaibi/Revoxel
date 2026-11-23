@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b9ce0304204475daaa3f75639658b14, type: 3}
+  m_Name: BiomeRegistry
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.BiomeRegistry
+  _biomes:
+  - {fileID: 11400000, guid: b9cce426040a47eb93b71201059b1366, type: 2}
+  - {fileID: 11400000, guid: 710491c7d3c4467fa496de17d53dbda4, type: 2}
+  - {fileID: 11400000, guid: 1eb1847a595e4b80bee306610b2faa39, type: 2}
+  - {fileID: 11400000, guid: 9dc9475ef1504d7aaff52cc55b781fcd, type: 2}
+  - {fileID: 11400000, guid: b8be3d6b4ae64527979cb60f89adde9d, type: 2}
+  - {fileID: 11400000, guid: d833b9539ab6405490a4fce0930dd027, type: 2}
+  - {fileID: 11400000, guid: 474102a9520d48c9a9510d9b98263d95, type: 2}
+  - {fileID: 11400000, guid: decd0b3353b34439a425c80c42bd7b9a, type: 2}
