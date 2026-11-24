@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ad99c79012b24bbda08caa0c2e324352, type: 3}
+  m_Name: Placeholder_VegetationSettings
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.VegetationSettings
+  _species:
+  - {fileID: 11400000, guid: d7967272c7bb46818feb37741b670d52, type: 2}
+  - {fileID: 11400000, guid: 16b896777ffc48c7b66c264424edc931, type: 2}
+  - {fileID: 11400000, guid: 01d74024ff5d4679bdd2d6005a4507b0, type: 2}
+  - {fileID: 11400000, guid: d7306c3b80a240318b023178f9e64c7f, type: 2}
+  - {fileID: 11400000, guid: 2ef722b3b6a246dfacc70bce6cf1c508, type: 2}
+  - {fileID: 11400000, guid: 48d27bc8f72f4f37b5487c437e21642d, type: 2}
+  - {fileID: 11400000, guid: 85bcf5a178914038b3c30f31ac0e0407, type: 2}
+  - {fileID: 11400000, guid: f02c173dda51470d8b67118ab5365a49, type: 2}
+  _cellMeters: 2
+  _minWoodRadiusVoxels: 0.85
+  _barkVoxels: 1.25
+  _leafNoiseMeters: 0.6
+  _leafLumps: 0.3
+  _detailMaxLevel: 5
+  _memoryBudgetMiB: 160

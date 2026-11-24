@@ -16,6 +16,10 @@ namespace Revoxel.World
         // TerrainParams packs the reef corals into a fixed-size list for Burst.
         public const int MaxReefCorals = 4;
 
+        // Packed for Burst (D-085).
+        public const int MaxTreeSpecies = 4;
+        public const int MaxPlants = 4;
+
         private const string Placeholder = " Placeholder value (Q-12).";
         private const string Range =
             "Range (min, max) the biome claims; outside it the biome loses weight.";
@@ -158,6 +162,27 @@ namespace Revoxel.World
         [Tooltip("Rock under the coral of a head.")]
         private VoxelType _reefRock;
 
+        [Header("Vegetation (D-085)")]
+        [SerializeField]
+        [Tooltip(
+            "Chance that a tree candidate cell holds a tree before spacing thins them, 0 to 1."
+                + Placeholder
+        )]
+        [Range(0f, 1f)]
+        private float _treeCover;
+
+        [SerializeField]
+        [Tooltip("Species that grow here, from the vegetation settings.")]
+        private TreeSpecies[] _trees = Array.Empty<TreeSpecies>();
+
+        [SerializeField]
+        [Tooltip("Relative weight of each species, same order." + Placeholder)]
+        private float[] _treeWeights = Array.Empty<float>();
+
+        [SerializeField]
+        [Tooltip("Ground plants, tried in order on each column.")]
+        private BiomePlant[] _plants = Array.Empty<BiomePlant>();
+
         public BiomeId Id => new BiomeId(_id);
 
         public string NameKey => _nameKey;
@@ -217,6 +242,14 @@ namespace Revoxel.World
         public VoxelType ReefRock => _reefRock;
 
         public bool HasReef => _reefHeightMeters > 0f;
+
+        public float TreeCover => _treeCover;
+
+        public TreeSpecies[] Trees => _trees;
+
+        public float[] TreeWeights => _treeWeights;
+
+        public BiomePlant[] Plants => _plants;
 
         public bool TryValidate(float subsurfaceDepthMeters, out string error)
         {
@@ -286,6 +319,10 @@ namespace Revoxel.World
                 error =
                     $"{name}: a reef needs a positive scale, a clearance, a rock and 1 to {MaxReefCorals} corals.";
             }
+            else if (!TryValidateVegetation(out error))
+            {
+                error = $"{name}: {error}";
+            }
             else
             {
                 error = string.Empty;
@@ -293,6 +330,47 @@ namespace Revoxel.World
             }
 
             return false;
+        }
+
+        private bool TryValidateVegetation(out string error)
+        {
+            var trees = _trees ?? Array.Empty<TreeSpecies>();
+            var weights = _treeWeights ?? Array.Empty<float>();
+            var plants = _plants ?? Array.Empty<BiomePlant>();
+            if (trees.Length > MaxTreeSpecies || Array.IndexOf(trees, null) >= 0)
+            {
+                error = $"trees must list at most {MaxTreeSpecies} species and no empty entry.";
+                return false;
+            }
+
+            if (weights.Length != trees.Length || Array.Exists(weights, w => !(w > 0f)))
+            {
+                error = "every tree species needs a positive weight.";
+                return false;
+            }
+
+            if (_treeCover > 0f && trees.Length == 0)
+            {
+                error = "a tree cover needs at least one species.";
+                return false;
+            }
+
+            if (plants.Length > MaxPlants || Array.IndexOf(plants, null) >= 0)
+            {
+                error = $"plants must list at most {MaxPlants} plants.";
+                return false;
+            }
+
+            foreach (var plant in plants)
+            {
+                if (!plant.TryValidate(out error))
+                {
+                    return false;
+                }
+            }
+
+            error = string.Empty;
+            return true;
         }
     }
 }

@@ -143,6 +143,7 @@ namespace Revoxel.Tests.EditMode
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
             var columns = new[] { new int2(0, 0), new int2(999, 999), new int2(-850, 300) };
             using var range = new NativeReference<ColumnRange>(Allocator.TempJob);
+            using var parts = new NativeList<TreePart>(Allocator.TempJob);
             foreach (var column in columns)
             {
                 new ColumnHeightJob
@@ -150,6 +151,7 @@ namespace Revoxel.Tests.EditMode
                     Params = p,
                     Column = column,
                     Range = range,
+                    Parts = parts,
                 }
                     .Schedule()
                     .Complete();
@@ -196,10 +198,12 @@ namespace Revoxel.Tests.EditMode
             using var result = new NativeReference<ChunkVoxels>(Allocator.TempJob);
             foreach (var coord in SurfaceChunks(p))
             {
+                using var parts = VegetationCollectJob.Collect(p, Coords.ColumnOf(coord), out _);
                 new ChunkGenJob
                 {
                     Params = p,
                     Coord = coord,
+                    Parts = parts.AsArray(),
                     Scratch = scratch,
                     Result = result,
                 }

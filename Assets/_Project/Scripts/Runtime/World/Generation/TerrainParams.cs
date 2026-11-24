@@ -121,6 +121,10 @@ namespace Revoxel.World
         // The planned lakes and rivers (D-078); owned by whoever called Create.
         public WaterPlan WaterPlan;
 
+        // Tree species, biome vegetation and ground plants (D-085); owned by whoever called
+        // Create, like the water plan.
+        public VegetationTable Vegetation;
+
         // Seeded noise offsets, one per field.
         public float2 WarpOffsetX;
         public float2 WarpOffsetZ;
@@ -260,6 +264,15 @@ namespace Revoxel.World
                 SetWater(ref p, water);
             }
 
+            p.Vegetation =
+                settings.VegetationSettings != null
+                    ? VegetationTable.Create(
+                        settings.VegetationSettings,
+                        settings.Biomes,
+                        p.HashSeed,
+                        Allocator.Persistent
+                    )
+                    : VegetationTable.Empty(Allocator.Persistent);
             return p;
         }
 
@@ -279,6 +292,7 @@ namespace Revoxel.World
         public void Dispose()
         {
             WaterPlan.Dispose();
+            Vegetation.Dispose();
         }
 
         private static void SetWater(ref TerrainParams p, WaterSettings w)

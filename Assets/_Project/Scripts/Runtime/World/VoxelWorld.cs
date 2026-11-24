@@ -802,6 +802,7 @@ namespace Revoxel.World
                 _heightSlots[i] = new HeightSlot
                 {
                     Range = new NativeReference<ColumnRange>(Allocator.Persistent),
+                    Parts = new NativeList<TreePart>(256, Allocator.Persistent),
                 };
                 _genSlots[i] = new GenSlot
                 {
@@ -875,6 +876,11 @@ namespace Revoxel.World
                 slot.Column = null;
                 column.HeightSlot = -1;
                 var range = slot.Range.Value;
+                column.Range = range;
+                column.Parts = new NativeArray<TreePart>(
+                    slot.Parts.AsArray(),
+                    Allocator.Persistent
+                );
                 for (var cy = 0; cy < WorldConstants.ChunksY; cy++)
                 {
                     var kind = TerrainGenerator.Classify(_params, range, cy, out var id);
@@ -943,6 +949,7 @@ namespace Revoxel.World
             }
 
             column.Stage = ColumnStage.Loaded;
+            column.DisposeParts();
             _columnsInProgress--;
 
             // The new chunks, and every neighbor whose padded volume reaches into them.
@@ -1094,6 +1101,7 @@ namespace Revoxel.World
                 Params = _params,
                 Column = coord,
                 Range = slot.Range,
+                Parts = slot.Parts,
             }.Schedule();
         }
 
@@ -1115,6 +1123,9 @@ namespace Revoxel.World
                 {
                     Params = _params,
                     Coord = new ChunkCoord(column.Coord.x, cy, column.Coord.y),
+                    Parts = column.Parts,
+                    KnownRange = column.Range,
+                    HasKnownRange = true,
                     Scratch = slot.Scratch,
                     Result = slot.Result,
                 }.Schedule();
@@ -1589,6 +1600,11 @@ namespace Revoxel.World
                     {
                         slot.Range.Dispose();
                     }
+
+                    if (slot.Parts.IsCreated)
+                    {
+                        slot.Parts.Dispose();
+                    }
                 }
 
                 _heightSlots = null;
@@ -1628,6 +1644,7 @@ namespace Revoxel.World
         private sealed class HeightSlot
         {
             public NativeReference<ColumnRange> Range;
+            public NativeList<TreePart> Parts;
             public JobHandle Handle;
             public StreamColumn Column;
             public bool Busy;

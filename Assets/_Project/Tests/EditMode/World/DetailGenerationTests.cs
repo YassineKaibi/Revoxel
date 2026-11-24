@@ -16,6 +16,7 @@ namespace Revoxel.Tests.EditMode
         public void DetailGen_Level0MatchesFullResolution()
         {
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var vegetation = VegetationIds.Of(p);
             var cache = new Dictionary<ChunkCoord, ushort[]>();
             foreach (var coord in SurfaceChunks(p, 0))
             {
@@ -38,6 +39,12 @@ namespace Revoxel.Tests.EditMode
                         cache.Add(chunk, dense);
                     }
 
+                    // Level 0 is the bare ground: plants and trees are full resolution only.
+                    if (vegetation.Contains(dense[Coords.LocalIndex(local)]))
+                    {
+                        continue;
+                    }
+
                     Assert.That(
                         padded[Coords.PaddedIndex(x, y, z)],
                         Is.EqualTo(dense[Coords.LocalIndex(local)]),
@@ -53,6 +60,7 @@ namespace Revoxel.Tests.EditMode
         public void DetailGen_SolidMatchesSurfaceAtCoarseCenters(int level)
         {
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var vegetation = VegetationIds.Of(p);
             var s = 1 << level;
             foreach (var coord in SurfaceChunks(p, level))
             {
@@ -71,8 +79,9 @@ namespace Revoxel.Tests.EditMode
                     {
                         var id = padded[Coords.PaddedIndex(x, y, z)];
                         var expected = origin.y + y * s + s / 2 < h;
+                        // Above the ground a coarse voxel may hold a tree (D-088).
                         Assert.That(
-                            IsSolid(p, id),
+                            IsSolid(p, id) && (expected || !vegetation.Contains(id)),
                             Is.EqualTo(expected),
                             $"level {level}, chunk {coord}, ({x}, {y}, {z}), surface {h}"
                         );

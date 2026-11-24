@@ -303,6 +303,10 @@ namespace Revoxel.World
         [Tooltip("Rivers and lakes (PLAN-05).")]
         private WaterSettings _waterSettings;
 
+        [SerializeField]
+        [Tooltip("Trees and ground plants (PLAN-06).")]
+        private VegetationSettings _vegetationSettings;
+
         public float SeaLevelMeters => _seaLevelMeters;
 
         public float IslandRadiusMeters => _islandRadiusMeters;
@@ -429,6 +433,8 @@ namespace Revoxel.World
 
         public WaterSettings WaterSettings => _waterSettings;
 
+        public VegetationSettings VegetationSettings => _vegetationSettings;
+
         public bool TryValidate(out string error)
         {
             const float worldHeight = WorldConstants.WorldHeightVoxels * WorldConstants.VoxelSize;
@@ -442,10 +448,11 @@ namespace Revoxel.World
                 || _snow == null
                 || _biomes == null
                 || _waterSettings == null
+                || _vegetationSettings == null
             )
             {
                 error =
-                    "Water, stone, snow, the biome registry and the water settings are required.";
+                    "Water, stone, snow, the biome registry, the water and the vegetation settings are required.";
             }
             else if (
                 _pocketTypes == null
@@ -542,13 +549,36 @@ namespace Revoxel.World
             {
                 error = $"{_waterSettings.name}: {error}";
             }
-            else
+            else if (!_vegetationSettings.TryValidate(out error))
             {
-                error = string.Empty;
+                error = $"{_vegetationSettings.name}: {error}";
+            }
+            else if (SpeciesListed(out error))
+            {
                 return true;
             }
 
             return false;
+        }
+
+        // Every species a biome names is in the vegetation settings' list.
+        private bool SpeciesListed(out string error)
+        {
+            foreach (var biome in _biomes.Biomes)
+            {
+                foreach (var species in biome.Trees)
+                {
+                    if (_vegetationSettings.IndexOf(species) < 0)
+                    {
+                        error =
+                            $"{biome.name}: {species.name} is not in {_vegetationSettings.name}.";
+                        return false;
+                    }
+                }
+            }
+
+            error = string.Empty;
+            return true;
         }
 
         private void OnValidate()

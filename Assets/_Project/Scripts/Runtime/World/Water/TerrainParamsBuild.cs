@@ -166,6 +166,7 @@ namespace Revoxel.World
             _handle.Complete();
             _pending = false;
             _params.WaterPlan.Dispose();
+            _params.Vegetation.Dispose();
             _params = default;
             if (_water)
             {

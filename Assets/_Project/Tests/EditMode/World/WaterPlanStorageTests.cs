@@ -17,17 +17,22 @@ namespace Revoxel.Tests.EditMode
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
             using var a = new NativeReference<ColumnRange>(Allocator.TempJob);
             using var b = new NativeReference<ColumnRange>(Allocator.TempJob);
+            using var partsA = new NativeList<TreePart>(Allocator.TempJob);
+            using var partsB = new NativeList<TreePart>(Allocator.TempJob);
+            using var partsAlone = new NativeList<TreePart>(Allocator.TempJob);
             var first = new ColumnHeightJob
             {
                 Params = p,
                 Column = new int2(0, 0),
                 Range = a,
+                Parts = partsA,
             }.Schedule();
             var second = new ColumnHeightJob
             {
                 Params = p,
                 Column = new int2(5, 3),
                 Range = b,
+                Parts = partsB,
             }.Schedule();
             JobHandle.CombineDependencies(first, second).Complete();
 
@@ -37,6 +42,7 @@ namespace Revoxel.Tests.EditMode
                 Params = p,
                 Column = new int2(5, 3),
                 Range = alone,
+                Parts = partsAlone,
             }.Run();
             Assert.That(b.Value.Height, Is.EqualTo(alone.Value.Height));
             Assert.That(b.Value.Water, Is.EqualTo(alone.Value.Water));

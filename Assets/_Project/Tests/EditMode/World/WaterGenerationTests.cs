@@ -126,6 +126,7 @@ namespace Revoxel.Tests.EditMode
             }
 
             using var range = new NativeReference<ColumnRange>(Allocator.TempJob);
+            using var parts = new NativeList<TreePart>(Allocator.TempJob);
             foreach (var column in columns)
             {
                 new ColumnHeightJob
@@ -133,6 +134,7 @@ namespace Revoxel.Tests.EditMode
                     Params = p,
                     Column = column,
                     Range = range,
+                    Parts = parts,
                 }
                     .Schedule()
                     .Complete();
