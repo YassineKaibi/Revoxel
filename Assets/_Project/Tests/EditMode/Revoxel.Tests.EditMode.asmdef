@@ -6,6 +6,7 @@
         "Revoxel.Game",
         "Unity.Mathematics",
         "Unity.Collections",
+        "Unity.Burst",
         "Revoxel.EditorTools",
         "Unity.Localization",
         "Unity.Localization.Editor",

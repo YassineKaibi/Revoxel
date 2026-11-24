@@ -106,5 +106,32 @@ namespace Revoxel.Tests.EditMode
                 }
             }
         }
+
+        // D-074: the overlay's water line and the water body names, in French and English.
+        [Test]
+        public void Localization_WaterKeys_Exist()
+        {
+            var collection = LocalizationEditorSettings.GetStringTableCollection(
+                Revoxel.UI.DebugOverlay.TableName
+            );
+            var keys = Revoxel.UI.DebugOverlay.WaterBodyKeys.Append(
+                Revoxel.UI.DebugOverlay.WaterKey
+            );
+            Assert.That(
+                Revoxel.UI.DebugOverlay.WaterBodyKeys.Length,
+                Is.EqualTo(System.Enum.GetValues(typeof(Revoxel.World.WaterBody)).Length)
+            );
+            foreach (var key in keys)
+            {
+                var shared = collection.SharedData.GetEntry(key);
+                Assert.That(shared, Is.Not.Null, key);
+                foreach (var code in RequiredCodes)
+                {
+                    var table = (StringTable)collection.GetTable(code);
+                    var entry = table.GetEntry(shared.Id);
+                    Assert.That(entry?.Value, Is.Not.Null.And.Not.Empty, $"{key} ({code})");
+                }
+            }
+        }
     }
 }

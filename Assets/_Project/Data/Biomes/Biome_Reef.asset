@@ -36,3 +36,11 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 3d2c6038121e47dfb4d46ad9cb5527a2, type: 2}
   _strataThicknessMeters: 2
   _wastePocketChance: 0.02
+  _reefHeightMeters: 7
+  _reefScaleMeters: 18
+  _reefCover: 0.45
+  _reefClearanceMeters: 1
+  _reefCorals:
+  - {fileID: 11400000, guid: 9b4274c8e8b947c8a3ed323e459c242e, type: 2}
+  - {fileID: 11400000, guid: 6be918618be244bdaade9031f2ba29bf, type: 2}
+  _reefRock: {fileID: 11400000, guid: db3a185f802e4a5494552689c6ec1de8, type: 2}

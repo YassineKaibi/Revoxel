@@ -1,0 +1,671 @@
+using Unity.Collections;
+using Unity.Mathematics;
+
+namespace Revoxel.World
+{
+    // Which water fills a column (D-070).
+    public enum WaterBody : byte
+    {
+        Sea = 0,
+        Lake = 1,
+        River = 2,
+    }
+
+    // A point of a river's centerline, its water surface, half width and depth there,
+    // voxels, and how much it bends: signed curvature in half widths, positive turning
+    // left, -1 to 1 (the deepest water moves to the outside of a bend).
+    public struct RiverNode
+    {
+        public float2 Pos;
+        public float Level;
+        public float HalfWidth;
+        public float Depth;
+        public float Bend;
+
+        // How open the mouth is where a river meets a lake: 1 at the lake, 0 past the
+        // flare; and the shaped land at the node (the mouth lowers the land, keeping its
+        // shape).
+        public float Open;
+        public float Land;
+    }
+
+    // A river: its nodes in TerrainParams.RiverNodes, source first, and the box (min x, min
+    // z, max x, max z, voxels) outside which it changes nothing.
+    public struct River
+    {
+        public int Start;
+        public int Count;
+        public float4 Bounds;
+
+        // The lake the river flows out of and the lake it ends in, -1 for none.
+        public int SourceLake;
+        public int EndLake;
+    }
+
+    // A lake in a basin of the hydrology grid (D-081): its surface level (voxels), the
+    // cell its water spills through, its deepest cell, its cell count and the box of its
+    // cells (min x, min z, max x, max z).
+    public struct Lake
+    {
+        public float Level;
+        public int Spill;
+        public int Deepest;
+        public int Cells;
+        public int4 Bounds;
+
+        // Middle of the box, voxels.
+        public float2 Center => (HydroGrid.Center(Bounds.xy) + HydroGrid.Center(Bounds.zw)) * 0.5f;
+
+        // Half the larger side of the box, voxels.
+        public float Radius => (math.cmax(Bounds.zw - Bounds.xy) + 1) * HydroGrid.CellVoxels * 0.5f;
+
+        // Center of the deepest cell, voxels.
+        public float2 DeepestPoint => HydroGrid.Center(HydroGrid.Cell(Deepest));
+    }
+
+    // How lakes and rivers shape a column (PLAN-05, D-070, D-080, D-081). The plan comes
+    // from the hydrology grid (Basins, RiverNetwork); Apply shapes each column from it:
+    // inside the water a bed below the level, around it a bank that cuts the land down to
+    // the level (canyon walls widen with the cut) or raises it to the level where the land
+    // is lower, so every water surface is held by ground at least as high.
+    public static class Hydrology
+    {
+        // Lakes are searched this many cells around the column (their floors reach this far).
+        private const int LakeSearch = 2;
+
+        // Lake water reaches at most this far beyond the lake's cells, voxels (half a cell:
+        // the rim cells' centers stand at or above the level).
+        private const float LakeShoreReach = HydroGrid.CellVoxels * 0.5f;
+
+        // A bank holds the water within this many voxels upstream of its nearest point:
+        // the nearest points of neighbor columns lie closer than that along the river.
+        private const float BankHold = 3f;
+
+        // Segments of a river blend their cuts over about this distance (1 m), voxels. Sized
+        // for 8 m segments (D-080): wider, the far segments pull the banks back toward the
+        // land and leave a step above the water (2026-11-24 review).
+        private const float BlendDistance = 8f;
+
+        // A water's floor falls away from its flat bank by FloorFall voxels per voxel (27°):
+        // it holds the water beside it (the flank of a fall, a junction) and is below any
+        // cut a few meters further.
+        private const float FloorFall = 0.5f;
+
+        private enum Zone : byte
+        {
+            None = 0,
+            Bank = 2,
+            Water = 3,
+        }
+
+        // Shapes the column at pos (voxel column center) whose land height is land.
+        public static void Apply(
+            in TerrainParams p,
+            float2 pos,
+            float land,
+            float wallRun,
+            out float height,
+            out float level,
+            out WaterBody body
+        )
+        {
+            var shaping = new Shaping
+            {
+                Carve = land,
+                Floor = float.MinValue,
+                WetLevel = p.SeaLevel,
+            };
+
+            ShapeByLakes(p, pos, land, ref shaping);
+
+            ShapeByRivers(p, pos, land, wallRun, ref shaping);
+
+            if (shaping.Wet)
+            {
+                height = shaping.WetHeight;
+                level = shaping.WetLevel;
+                body = shaping.WetBody;
+                return;
+            }
+
+            height = math.max(shaping.Carve, shaping.Floor);
+            level = p.SeaLevel;
+            body = WaterBody.Sea;
+        }
+
+        // Lakes (D-081). A column within LakeShoreReach of a lake's cells is lake water
+        // where its ground lies below the level, so the shore follows the terrain. Beyond that
+        // reach the lake adds a floor at its level plus the lip, falling away with the
+        // distance: every dry column next to the water stands above it, a sill where the
+        // fine land dips between grid samples. The reach is continuous, so the water and the
+        // floor meet without a seam.
+        private static void ShapeByLakes(
+            in TerrainParams p,
+            float2 pos,
+            float land,
+            ref Shaping shaping
+        )
+        {
+            var plan = p.WaterPlan;
+            if (plan.Lakes.Length == 0)
+            {
+                return;
+            }
+
+            var ids = new FixedList64Bytes<int>();
+            var distances = new FixedList64Bytes<float>();
+            NearLakes(p, pos, ref ids, ref distances);
+            for (var n = 0; n < ids.Length; n++)
+            {
+                var lake = plan.Lakes[ids[n]];
+                var within = distances[n] <= LakeShoreReach;
+                var wet = within && math.floor(land) < math.floor(lake.Level);
+                Combine(
+                    p,
+                    wet ? Zone.Water : Zone.None,
+                    land,
+                    wet ? -1f : math.max(0f, distances[n] - LakeShoreReach),
+                    lake.Level,
+                    lake.Level + p.BankLip,
+                    WaterBody.Lake,
+                    land,
+                    ref shaping
+                );
+            }
+        }
+
+        // Each river segment near the column shapes it, so where rivers meet or bend the
+        // banks of all hold their water. The segments come from the column's grid cell
+        // (WaterPlan.CellRuns), river by river; in them only segments whose start node is
+        // within a segment plus the reach on both axes count.
+        private static void ShapeByRivers(
+            in TerrainParams p,
+            float2 pos,
+            float land,
+            float wallRun,
+            ref Shaping shaping
+        )
+        {
+            var plan = p.WaterPlan;
+            var home = HydroGrid.CellOf(pos);
+            if (plan.CellStart.Length == 0 || !HydroGrid.InGrid(home))
+            {
+                return;
+            }
+
+            var i = HydroGrid.Index(home);
+            var near = p.RiverStep + p.RiverReach;
+            var current = -1;
+            var start = 0;
+
+            // The segments' cuts are blended by nearness (a soft nearest), per river: the
+            // nearest stretch shapes the bank and bends blend over BlendDistance, so a lower
+            // stretch never carves under the water of the stretch beside the column.
+            var cut = new SoftNearest { Nearest = float.MaxValue };
+            for (var k = plan.CellStart[i]; k < plan.CellStart[i + 1]; k++)
+            {
+                var run = plan.CellRuns[k];
+                if (run.x != current)
+                {
+                    Flush(ref shaping, ref cut);
+                    current = run.x;
+                    start = plan.Rivers[current].Start;
+                }
+
+                for (var n = run.y; n <= run.z; n++)
+                {
+                    var a = plan.Nodes[n].Pos;
+                    if (math.abs(pos.x - a.x) > near || math.abs(pos.y - a.y) > near)
+                    {
+                        continue;
+                    }
+
+                    var ab = plan.Nodes[n + 1].Pos - a;
+                    var lengthSq = math.lengthsq(ab);
+                    var s = lengthSq > 0f ? math.saturate(math.dot(pos - a, ab) / lengthSq) : 0f;
+                    var foot = a + ab * s;
+                    var dSq = math.distancesq(pos, foot);
+
+                    // Over land at or above a segment's water (and the water just upstream),
+                    // beyond the farthest its bank can reach at this land (shore and wall for
+                    // the deepest cut its levels allow, or its mouth's band) the segment's
+                    // bank is the land itself: only its share of the blend is added, the same
+                    // value Profile would give, without the profile (about half the calls).
+                    var na = plan.Nodes[n];
+                    var nc = plan.Nodes[n + 1];
+                    var upstream = math.max(na.Level, plan.Nodes[math.max(start, n - 1)].Level);
+                    if (land >= upstream + p.BankLip)
+                    {
+                        var deepest = land - (math.min(na.Level, nc.Level) + p.BankLip);
+                        var rise = math.min(deepest, p.ShoreCut);
+                        var shore = p.BankWidth + rise * p.ShoreRun;
+                        var wall = math.max(
+                            0f,
+                            math.min((deepest - rise) * wallRun, p.MaxWallWidth - shore)
+                        );
+                        var widest = math.max(na.HalfWidth, nc.HalfWidth);
+                        var mouth =
+                            (widest + p.BankWidth)
+                            * (1f + p.MouthSpread * math.max(na.Open, nc.Open));
+                        var reach = math.max(widest + shore + wall, mouth) + 1f;
+                        if (dSq > reach * reach)
+                        {
+                            cut.Add(math.sqrt(dSq), land);
+                            continue;
+                        }
+                    }
+
+                    var cross = ab.x * (pos.y - foot.y) - ab.y * (pos.x - foot.x);
+                    var side = cross >= 0f ? 1f : -1f;
+                    ShapeByRiver(p, run.x, dSq, side, n, s, land, wallRun, ref shaping, ref cut);
+                }
+            }
+
+            Flush(ref shaping, ref cut);
+        }
+
+        private static void Flush(ref Shaping shaping, ref SoftNearest cut)
+        {
+            if (cut.Weight > 0f)
+            {
+                shaping.Carve = math.min(shaping.Carve, cut.Sum / cut.Weight);
+            }
+
+            cut = new SoftNearest { Nearest = float.MaxValue };
+        }
+
+        // The lakes with a cell within LakeSearch cells of pos and the distance from pos to
+        // the nearest of their cells (0 inside one), voxels.
+        private static void NearLakes(
+            in TerrainParams p,
+            float2 pos,
+            ref FixedList64Bytes<int> ids,
+            ref FixedList64Bytes<float> distances
+        )
+        {
+            var plan = p.WaterPlan;
+            var home = HydroGrid.CellOf(pos);
+            for (var dz = -LakeSearch; dz <= LakeSearch; dz++)
+            for (var dx = -LakeSearch; dx <= LakeSearch; dx++)
+            {
+                var c = home + new int2(dx, dz);
+                if (!HydroGrid.InGrid(c))
+                {
+                    continue;
+                }
+
+                var k = plan.LakeOf[HydroGrid.Index(c)] - 1;
+                if (k < 0)
+                {
+                    continue;
+                }
+
+                var offset = math.abs(pos - HydroGrid.Center(c)) - HydroGrid.CellVoxels * 0.5f;
+                var distance = math.length(math.max(offset, 0f));
+                var slot = ids.IndexOf(k);
+                if (slot >= 0)
+                {
+                    distances[slot] = math.min(distances[slot], distance);
+                }
+                else if (ids.Length < ids.Capacity)
+                {
+                    ids.Add(k);
+                    distances.Add(distance);
+                }
+            }
+        }
+
+        // Whether a column whose shaped land is land is lake water, by the rule
+        // ShapeByLakes applies, and the highest such lake and its level.
+        public static bool LakeSurface(
+            in TerrainParams p,
+            float2 pos,
+            float land,
+            out int lake,
+            out float level
+        )
+        {
+            lake = -1;
+            level = float.MinValue;
+            if (p.WaterPlan.Lakes.Length == 0)
+            {
+                return false;
+            }
+
+            var ids = new FixedList64Bytes<int>();
+            var distances = new FixedList64Bytes<float>();
+            NearLakes(p, pos, ref ids, ref distances);
+            for (var n = 0; n < ids.Length; n++)
+            {
+                var l = p.WaterPlan.Lakes[ids[n]].Level;
+                if (distances[n] <= LakeShoreReach && math.floor(land) < math.floor(l) && l > level)
+                {
+                    lake = ids[n];
+                    level = l;
+                }
+            }
+
+            return lake >= 0;
+        }
+
+        // Whether a column whose shaped land is land is water of the given lake.
+        public static bool InLakeWater(in TerrainParams p, float2 pos, float land, int lake)
+        {
+            if (lake < 0 || lake >= p.WaterPlan.Lakes.Length)
+            {
+                return false;
+            }
+
+            var ids = new FixedList64Bytes<int>();
+            var distances = new FixedList64Bytes<float>();
+            NearLakes(p, pos, ref ids, ref distances);
+            var n = ids.IndexOf(lake);
+            return n >= 0
+                && distances[n] <= LakeShoreReach
+                && math.floor(land) < math.floor(p.WaterPlan.Lakes[lake].Level);
+        }
+
+        // The column shaped by one segment of a river, from the squared distance to its
+        // nearest point on the segment (node + t). Every segment near the column shapes it
+        // and the results combine (the lowest cut, the highest floor), so the ground stays
+        // continuous where the nearest stretch of a bending river changes.
+        private static void ShapeByRiver(
+            in TerrainParams p,
+            int riverIndex,
+            float distanceSq,
+            float side,
+            int node,
+            float t,
+            float land,
+            float wallRun,
+            ref Shaping shaping,
+            ref SoftNearest cut
+        )
+        {
+            var river = p.WaterPlan.Rivers[riverIndex];
+            var a = p.WaterPlan.Nodes[node];
+            var c = p.WaterPlan.Nodes[node + 1];
+            var nearestLevel = math.lerp(a.Level, c.Level, t);
+            var distance = math.sqrt(distanceSq);
+            var halfWidth = math.lerp(a.HalfWidth, c.HalfWidth, t);
+            var depth = math.lerp(a.Depth, c.Depth, t);
+            var u = math.saturate(distance / halfWidth);
+
+            // The deepest point moves toward the outside of a bend (the side opposite the
+            // turn); the bed still meets the level at both edges.
+            var deepest = -p.BendDepthShift * math.lerp(a.Bend, c.Bend, t);
+            var across = side * u;
+            var w = (across - deepest) / (across > deepest ? 1f - deepest : 1f + deepest);
+
+            // A bank holds the water beside it, which may lie a little upstream (a rapid,
+            // the face of a fall): it takes the level that far up the river.
+            var bankLevel = UpstreamLevel(p, river, node, t, BankHold) + p.BankLip;
+            var z = Profile(
+                p,
+                wallRun,
+                distance - halfWidth,
+                nearestLevel,
+                bankLevel,
+                nearestLevel - depth * (1f - w * w),
+                land,
+                out var h
+            );
+            // At a lake's mouth the river lowers the existing ground by a smooth amount that
+            // fades away from its axis (up to MouthSpread times wider at the lake) instead of
+            // drawing a channel: the water lies wherever that ground is under the level, so
+            // its outline follows the terrain (2026-11-24 review).
+            var open = math.lerp(a.Open, c.Open, t);
+            var reach = (halfWidth + p.BankWidth) * (1f + p.MouthSpread * open);
+            if (open > 0f && distance < reach)
+            {
+                // Toward the band's edge the ground comes back to the land, and never below
+                // the level plus the lip there, so the water it holds stays held.
+                var drop = math.max(0f, math.lerp(a.Land, c.Land, t) - (nearestLevel - depth));
+                var k = 1f - math.smoothstep(0f, reach, distance);
+                var lowered = math.lerp(math.max(land, nearestLevel + p.BankLip), land - drop, k);
+                h = math.lerp(h, lowered, open);
+                var wet =
+                    math.floor(h) < math.floor(nearestLevel)
+                    && nearestLevel > p.SeaLevel
+                    && land >= p.SeaLevel;
+                z = wet ? Zone.Water : Zone.Bank;
+
+                // Dry ground in a mouth holds the water beside it whatever the blend.
+                if (!wet && nearestLevel > p.SeaLevel && land >= p.SeaLevel)
+                {
+                    shaping.Floor = math.max(shaping.Floor, nearestLevel);
+                }
+            }
+
+            // Water and floors combine as for any water; the cut joins the river's blend
+            // (no change counts as the land).
+            var carves = z == Zone.Bank && h <= land;
+            Combine(
+                p,
+                carves ? Zone.None : z,
+                h,
+                distance - halfWidth,
+                nearestLevel,
+                bankLevel,
+                WaterBody.River,
+                land,
+                ref shaping
+            );
+            if (z != Zone.Water)
+            {
+                cut.Add(distance, carves ? h : land);
+            }
+        }
+
+        // A blend weighted by exp(-(distance - nearest) / BlendDistance), kept stable as
+        // nearer values arrive.
+        private struct SoftNearest
+        {
+            public float Nearest;
+            public float Weight;
+            public float Sum;
+
+            public void Add(float distance, float value)
+            {
+                if (Weight == 0f)
+                {
+                    Nearest = distance;
+                    Weight = 1f;
+                    Sum = value;
+                    return;
+                }
+
+                if (distance < Nearest)
+                {
+                    var k = math.exp((distance - Nearest) / BlendDistance);
+                    Weight = Weight * k + 1f;
+                    Sum = Sum * k + value;
+                    Nearest = distance;
+                    return;
+                }
+
+                var w = math.exp((Nearest - distance) / BlendDistance);
+                Weight += w;
+                Sum += w * value;
+            }
+        }
+
+        // The water level a distance upstream of node + t along the river (levels never
+        // rise downstream, so it bounds every level within that distance).
+        private static float UpstreamLevel(
+            in TerrainParams p,
+            in River river,
+            int node,
+            float t,
+            float distance
+        )
+        {
+            for (var n = node; n >= river.Start; n--)
+            {
+                var a = p.WaterPlan.Nodes[n];
+                var c = p.WaterPlan.Nodes[n + 1];
+                var length = math.distance(a.Pos, c.Pos);
+                var along = (n == node ? t : 1f) * length;
+                if (along >= distance)
+                {
+                    return math.lerp(
+                        a.Level,
+                        c.Level,
+                        (along - distance) / math.max(length, 1e-3f)
+                    );
+                }
+
+                distance -= along;
+            }
+
+            return p.WaterPlan.Nodes[river.Start].Level;
+        }
+
+        // The ground at signed distance edge from the water's edge (negative inside) of
+        // a lake's or a river's water at level. Inside, the bed rises from its depth toward the edge; where it
+        // comes above the water it is dry and stands at the bank level at once, like the
+        // banks outside, so the water next to it is always held.
+        private static Zone Profile(
+            in TerrainParams p,
+            float wallRun,
+            float edge,
+            float level,
+            float bankLevel,
+            float bed,
+            float land,
+            out float height
+        )
+        {
+            if (edge < 0f)
+            {
+                // A hollow deeper than the bed stays and fills with water. At sea the sea
+                // holds everything.
+                var dry =
+                    math.floor(bed) >= math.floor(level)
+                    && level > p.SeaLevel
+                    && land >= p.SeaLevel;
+                if (dry)
+                {
+                    height = math.max(bed, bankLevel);
+                    return Zone.Bank;
+                }
+
+                height = math.min(land, bed);
+                return Zone.Water;
+            }
+
+            if (land >= bankLevel)
+            {
+                var cut = land - bankLevel;
+
+                // A river's first meters of cut form a gentle shore; what is deeper rises
+                // as valley walls beyond it, as steep as the biome's wall run (canyons).
+                var rise = math.min(cut, p.ShoreCut);
+                var shoreWidth = p.BankWidth + rise * p.ShoreRun;
+                var wallWidth = math.min((cut - rise) * wallRun, p.MaxWallWidth - shoreWidth);
+                if (edge >= shoreWidth + wallWidth)
+                {
+                    height = land;
+                    return Zone.None;
+                }
+
+                // Rising at once from the water's edge (an ease-out), with no flat start.
+                var t = math.saturate(edge / shoreWidth);
+                height = bankLevel + rise * (1f - (1f - t) * (1f - t));
+                if (wallWidth > 0f)
+                {
+                    height +=
+                        (cut - rise) * math.smoothstep(shoreWidth, shoreWidth + wallWidth, edge);
+                }
+
+                return Zone.Bank;
+            }
+
+            // The land is below the water: at sea the sea holds it; inland a bank at the
+            // level, then the water's floor as a levee down to the land.
+            if (level <= p.SeaLevel || land < p.SeaLevel)
+            {
+                height = land;
+                return Zone.None;
+            }
+
+            // Beyond the flat bank the water's floor (Combine) slopes down to the land.
+            if (edge < p.BankWidth)
+            {
+                height = bankLevel;
+                return Zone.Bank;
+            }
+
+            height = land;
+            return Zone.None;
+        }
+
+        // What the lakes and rivers have said about a column so far.
+        private struct Shaping
+        {
+            // Some water covers the column: its bed (the deepest) and level (the highest).
+            public bool Wet;
+            public float WetHeight;
+            public float WetLevel;
+            public WaterBody WetBody;
+
+            // Otherwise: the lowest ground any bank cuts to (the land if none), and the
+            // highest ground some water needs to be held.
+            public float Carve;
+            public float Floor;
+        }
+
+        // Water wins: two waters keep the higher level over the deeper bed, so neither ends
+        // in a wall. Dry columns take the lowest cut, but never less than the floor of any
+        // water nearby: its bank level beside it, falling away at FloorFall, so the ground
+        // stays continuous where the banks of two waters meet
+        // and a levee slopes down where the land is lower than the water. Banks raised
+        // above the land (a flat bank, a dry channel edge) are floors too.
+        private static void Combine(
+            in TerrainParams p,
+            Zone zone,
+            float height,
+            float edge,
+            float level,
+            float bankLevel,
+            WaterBody body,
+            float land,
+            ref Shaping shaping
+        )
+        {
+            if (zone == Zone.Water)
+            {
+                if (!shaping.Wet || level > shaping.WetLevel)
+                {
+                    shaping.WetLevel = level;
+                    shaping.WetBody = body;
+                }
+
+                shaping.WetHeight = shaping.Wet ? math.min(shaping.WetHeight, height) : height;
+                shaping.Wet = true;
+                return;
+            }
+
+            if (level > p.SeaLevel && land >= p.SeaLevel)
+            {
+                var x = math.max(0f, edge - p.BankWidth);
+                var floor = bankLevel - FloorFall * x;
+                shaping.Floor = math.max(shaping.Floor, floor);
+            }
+
+            if (zone == Zone.None)
+            {
+                return;
+            }
+
+            if (height > land)
+            {
+                shaping.Floor = math.max(shaping.Floor, height);
+            }
+            else
+            {
+                shaping.Carve = math.min(shaping.Carve, height);
+            }
+        }
+    }
+}

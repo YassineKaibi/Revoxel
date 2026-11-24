@@ -8,11 +8,13 @@ using UnityEngine.Rendering;
 namespace Revoxel.World
 {
     // Meshes one padded chunk (D-051). A voxel A gets a render face toward its neighbor B
-    // when A is not Air, B is not opaque and A differs from B; a collision face when A is
-    // solid and B is not. Per direction and slice, faces with the same voxel id and the
-    // same four corner occlusion values are merged greedily into rectangles; collision
-    // faces merge by solidity only. Occlusion comes from the layer in front of the face,
-    // so it appears only at concave corners.
+    // when A is not Air, B is not opaque and A differs from B; a liquid A only toward Air
+    // (D-073). A collision face when A is solid and B is not. Per direction and slice,
+    // faces with the same voxel id and the same four corner occlusion values are merged
+    // greedily into rectangles; collision faces merge by solidity only. Occlusion comes
+    // from the layer in front of the face, so it appears only at concave corners; liquid
+    // faces have none. The render mesh has two submeshes: 0 every other face, 1 liquid
+    // faces (the water material).
     [BurstCompile]
     public struct GreedyMeshJob : IJob
     {
@@ -38,10 +40,18 @@ namespace Revoxel.World
         // Coarse detail chunks have no collider: the collision mesh is written empty.
         public bool SkipCollision;
 
+        // Coarse detail chunks with side walls: no liquid face toward the x and z padding,
+        // whose solid cells were turned to Air for the walls (D-057, D-073).
+        public bool SkipLiquidSides;
+
+        public const int OpaqueSubmesh = 0;
+        public const int LiquidSubmesh = 1;
+
         public void Execute()
         {
             var vertices = new NativeList<VoxelVertex>(1024, Allocator.Temp);
             var indices = new NativeList<int>(1536, Allocator.Temp);
+            var liquidIndices = new NativeList<int>(256, Allocator.Temp);
             var collisionVertices = new NativeList<float3>(1024, Allocator.Temp);
             var collisionIndices = new NativeList<int>(1536, Allocator.Temp);
             var renderMask = new NativeArray<uint>(Size * Size, Allocator.Temp);
@@ -56,7 +66,17 @@ namespace Revoxel.World
                     for (var d = 0; d < Size; d++)
                     {
                         BuildMasks(axis, u, v, sign, d, renderMask, collisionMask);
-                        EmitRender(axis, u, v, sign, d, renderMask, ref vertices, ref indices);
+                        EmitRender(
+                            axis,
+                            u,
+                            v,
+                            sign,
+                            d,
+                            renderMask,
+                            ref vertices,
+                            ref indices,
+                            ref liquidIndices
+                        );
                         if (SkipCollision)
                         {
                             continue;
@@ -76,7 +96,7 @@ namespace Revoxel.World
                 }
             }
 
-            WriteRender(vertices, indices);
+            WriteRender(vertices, indices, liquidIndices);
             WriteCollision(collisionVertices, collisionIndices);
         }
 
@@ -115,6 +135,13 @@ namespace Revoxel.World
                     continue;
                 }
 
+                if (Liquid(a))
+                {
+                    var side = axis != 1 && (front[axis] < 0 || front[axis] >= Size);
+                    renderMask[cell] = b == 0 && !(SkipLiquidSides && side) ? a | Unoccluded : 0u;
+                    continue;
+                }
+
                 // Corners 0 to 3 at (-u, -v), (+u, -v), (+u, +v), (-u, +v).
                 var ao0 = Occlusion(front, -du, -dv);
                 var ao1 = Occlusion(front, du, -dv);
@@ -128,6 +155,10 @@ namespace Revoxel.World
                     | (ao3 << (IdBits + 6));
             }
         }
+
+        // Every corner open (3): liquid faces merge by id alone.
+        private const uint Unoccluded =
+            (3u << IdBits) | (3u << (IdBits + 2)) | (3u << (IdBits + 4)) | (3u << (IdBits + 6));
 
         // 3 is open, 0 fully occluded (both sides opaque).
         private uint Occlusion(int3 front, int3 sideU, int3 sideV)
@@ -146,7 +177,8 @@ namespace Revoxel.World
             int d,
             NativeArray<uint> mask,
             ref NativeList<VoxelVertex> vertices,
-            ref NativeList<int> indices
+            ref NativeList<int> indices,
+            ref NativeList<int> liquidIndices
         )
         {
             var normal = float3.zero;
@@ -182,7 +214,15 @@ namespace Revoxel.World
                     );
                 }
 
-                AddQuad(ref indices, start, sign, ao.x + ao.z < ao.y + ao.w);
+                if (Liquid(id))
+                {
+                    AddQuad(ref liquidIndices, start, sign, false);
+                }
+                else
+                {
+                    AddQuad(ref indices, start, sign, ao.x + ao.z < ao.y + ao.w);
+                }
+
                 i += w;
             }
         }
@@ -314,24 +354,32 @@ namespace Revoxel.World
             }
         }
 
-        private void WriteRender(NativeList<VoxelVertex> vertices, NativeList<int> indices)
+        private void WriteRender(
+            NativeList<VoxelVertex> vertices,
+            NativeList<int> indices,
+            NativeList<int> liquidIndices
+        )
         {
             RenderMesh.SetVertexBufferParams(vertices.Length, RenderLayout);
             vertices.AsArray().CopyTo(RenderMesh.GetVertexData<VoxelVertex>());
-            WriteIndices(RenderMesh, vertices.Length, indices);
+            var opaqueCount = indices.Length;
+            indices.AddRange(liquidIndices.AsArray());
+            WriteIndices(RenderMesh, vertices.Length, indices, opaqueCount);
         }
 
         private void WriteCollision(NativeList<float3> vertices, NativeList<int> indices)
         {
             CollisionMesh.SetVertexBufferParams(vertices.Length, CollisionLayout);
             vertices.AsArray().CopyTo(CollisionMesh.GetVertexData<float3>());
-            WriteIndices(CollisionMesh, vertices.Length, indices);
+            WriteIndices(CollisionMesh, vertices.Length, indices, -1);
         }
 
+        // firstSubmeshCount < 0: one submesh; else two, split after that many indices.
         private static void WriteIndices(
             Mesh.MeshData mesh,
             int vertexCount,
-            NativeList<int> indices
+            NativeList<int> indices,
+            int firstSubmeshCount
         )
         {
             var wide = vertexCount > ushort.MaxValue;
@@ -356,13 +404,23 @@ namespace Revoxel.World
                 }
             }
 
-            mesh.subMeshCount = 1;
-            mesh.SetSubMesh(
-                0,
-                new SubMeshDescriptor(0, indices.Length),
+            const MeshUpdateFlags flags =
                 MeshUpdateFlags.DontRecalculateBounds
-                    | MeshUpdateFlags.DontValidateIndices
-                    | MeshUpdateFlags.DontNotifyMeshUsers
+                | MeshUpdateFlags.DontValidateIndices
+                | MeshUpdateFlags.DontNotifyMeshUsers;
+            if (firstSubmeshCount < 0)
+            {
+                mesh.subMeshCount = 1;
+                mesh.SetSubMesh(0, new SubMeshDescriptor(0, indices.Length), flags);
+                return;
+            }
+
+            mesh.subMeshCount = 2;
+            mesh.SetSubMesh(OpaqueSubmesh, new SubMeshDescriptor(0, firstSubmeshCount), flags);
+            mesh.SetSubMesh(
+                LiquidSubmesh,
+                new SubMeshDescriptor(firstSubmeshCount, indices.Length - firstSubmeshCount),
+                flags
             );
         }
 
@@ -371,5 +429,7 @@ namespace Revoxel.World
         private bool Opaque(uint id) => RenderData[(int)id].IsOpaque;
 
         private bool Solid(uint id) => RenderData[(int)id].IsSolid;
+
+        private bool Liquid(uint id) => RenderData[(int)id].IsLiquid;
     }
 }

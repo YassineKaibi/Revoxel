@@ -299,6 +299,10 @@ namespace Revoxel.World
         [SerializeField]
         private BiomeRegistry _biomes;
 
+        [SerializeField]
+        [Tooltip("Rivers and lakes (PLAN-05).")]
+        private WaterSettings _waterSettings;
+
         public float SeaLevelMeters => _seaLevelMeters;
 
         public float IslandRadiusMeters => _islandRadiusMeters;
@@ -423,6 +427,8 @@ namespace Revoxel.World
 
         public BiomeRegistry Biomes => _biomes;
 
+        public WaterSettings WaterSettings => _waterSettings;
+
         public bool TryValidate(out string error)
         {
             const float worldHeight = WorldConstants.WorldHeightVoxels * WorldConstants.VoxelSize;
@@ -430,9 +436,16 @@ namespace Revoxel.World
                 WorldConstants.IslandMaxChunkXZ
                 * WorldConstants.ChunkSize
                 * WorldConstants.VoxelSize;
-            if (_water == null || _stone == null || _snow == null || _biomes == null)
+            if (
+                _water == null
+                || _stone == null
+                || _snow == null
+                || _biomes == null
+                || _waterSettings == null
+            )
             {
-                error = "Water, stone, snow and the biome registry are required.";
+                error =
+                    "Water, stone, snow, the biome registry and the water settings are required.";
             }
             else if (
                 _pocketTypes == null
@@ -524,6 +537,10 @@ namespace Revoxel.World
             else if (!_biomes.TryValidate(_subsurfaceDepthMeters, out error))
             {
                 error = $"{_biomes.name}: {error}";
+            }
+            else if (!_waterSettings.TryValidate(out error))
+            {
+                error = $"{_waterSettings.name}: {error}";
             }
             else
             {

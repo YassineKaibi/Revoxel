@@ -13,6 +13,9 @@ namespace Revoxel.World
         // TerrainParams packs the strata into a fixed-size list for Burst.
         public const int MaxStrata = 8;
 
+        // TerrainParams packs the reef corals into a fixed-size list for Burst.
+        public const int MaxReefCorals = 4;
+
         private const string Placeholder = " Placeholder value (Q-12).";
         private const string Range =
             "Range (min, max) the biome claims; outside it the biome loses weight.";
@@ -112,6 +115,49 @@ namespace Revoxel.World
         [Range(0f, 1f)]
         private float _wastePocketChance;
 
+        [Header("Rivers (D-076)")]
+        [SerializeField]
+        [Tooltip(
+            "Horizontal run per meter of a river valley's walls below its shore: low for canyons."
+                + Placeholder
+        )]
+        private float _riverWallRun = 3f;
+
+        [Header("Reef (D-072)")]
+        [SerializeField]
+        [Tooltip(
+            "Height of the coral heads rising from the sea floor, m; 0 for none." + Placeholder
+        )]
+        private float _reefHeightMeters;
+
+        [SerializeField]
+        [Tooltip("Feature size of the coral heads, m." + Placeholder)]
+        private float _reefScaleMeters = 20f;
+
+        [SerializeField]
+        [Tooltip("Share of the floor covered by coral heads, 0 to 1." + Placeholder)]
+        [Range(0f, 1f)]
+        private float _reefCover = 0.4f;
+
+        [SerializeField]
+        [Tooltip("Water kept above the highest coral head, m." + Placeholder)]
+        private float _reefClearanceMeters = 1f;
+
+        [SerializeField]
+        [Tooltip(
+            "Share of a head's full height above which its top is coral, 0 to 1." + Placeholder
+        )]
+        [Range(0f, 1f)]
+        private float _reefCoralMin = 0.3f;
+
+        [SerializeField]
+        [Tooltip("Coral types on the heads, picked in patches.")]
+        private VoxelType[] _reefCorals = Array.Empty<VoxelType>();
+
+        [SerializeField]
+        [Tooltip("Rock under the coral of a head.")]
+        private VoxelType _reefRock;
+
         public BiomeId Id => new BiomeId(_id);
 
         public string NameKey => _nameKey;
@@ -153,6 +199,24 @@ namespace Revoxel.World
         public float StrataThicknessMeters => _strataThicknessMeters;
 
         public float WastePocketChance => _wastePocketChance;
+
+        public float RiverWallRun => _riverWallRun;
+
+        public float ReefHeightMeters => _reefHeightMeters;
+
+        public float ReefScaleMeters => _reefScaleMeters;
+
+        public float ReefCover => _reefCover;
+
+        public float ReefClearanceMeters => _reefClearanceMeters;
+
+        public float ReefCoralMin => _reefCoralMin;
+
+        public VoxelType[] ReefCorals => _reefCorals;
+
+        public VoxelType ReefRock => _reefRock;
+
+        public bool HasReef => _reefHeightMeters > 0f;
 
         public bool TryValidate(float subsurfaceDepthMeters, out string error)
         {
@@ -198,6 +262,29 @@ namespace Revoxel.World
             else if (_strataThicknessMeters < WorldConstants.VoxelSize || _hillAmplitudeMeters < 0f)
             {
                 error = $"{name}: strata thinner than a voxel or negative hill amplitude.";
+            }
+            else if (_riverWallRun <= 0f)
+            {
+                error = $"{name}: the river wall run must be positive.";
+            }
+            else if (
+                _reefHeightMeters < 0f
+                || (
+                    HasReef
+                    && (
+                        _reefScaleMeters <= 0f
+                        || _reefClearanceMeters < 0f
+                        || _reefRock == null
+                        || _reefCorals == null
+                        || _reefCorals.Length == 0
+                        || _reefCorals.Length > MaxReefCorals
+                        || Array.IndexOf(_reefCorals, null) >= 0
+                    )
+                )
+            )
+            {
+                error =
+                    $"{name}: a reef needs a positive scale, a clearance, a rock and 1 to {MaxReefCorals} corals.";
             }
             else
             {

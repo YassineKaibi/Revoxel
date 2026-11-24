@@ -32,9 +32,10 @@ namespace Revoxel.Tests.EditMode
         }
 
         // Done line: borders blend. Along transects across every kind of border, weights
-        // change smoothly from one voxel column to the next, the height never jumps a meter
-        // between neighbors (steep ground is fine, a seam is not), and where the column
-        // biome changes at least two biomes carry weight.
+        // change smoothly from one voxel column to the next, the land height never jumps a
+        // meter between neighbors (steep ground is fine, a seam is not), and where the
+        // column biome changes at least two biomes carry weight. The land is taken before
+        // water shapes it (D-076): a waterfall's flank is a cliff on purpose, not a seam.
         [Test]
         public void Biomes_BordersBlend_HeightsAndWeightsContinuous()
         {
@@ -53,6 +54,7 @@ namespace Revoxel.Tests.EditMode
                     var x = start.x + k;
                     TerrainGenerator.BiomeWeights(p, x, start.y, ref weights);
                     var sample = TerrainGenerator.Sample(p, x, start.y);
+                    var landHeight = TerrainGenerator.LandHeight(p, x, start.y, out _);
                     var sum = 0f;
                     for (var b = 0; b < weights.Length; b++)
                     {
@@ -71,7 +73,7 @@ namespace Revoxel.Tests.EditMode
                     if (hasPrevious)
                     {
                         Assert.That(
-                            math.abs(sample.Height - previousHeight),
+                            math.abs(landHeight - previousHeight),
                             Is.LessThan(8f),
                             $"height step at ({x}, {start.y})"
                         );
@@ -93,7 +95,7 @@ namespace Revoxel.Tests.EditMode
                     }
 
                     previous = weights;
-                    previousHeight = sample.Height;
+                    previousHeight = landHeight;
                     previousBiome = sample.Biome;
                     hasPrevious = true;
                 }

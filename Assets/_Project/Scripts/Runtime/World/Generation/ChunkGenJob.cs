@@ -5,8 +5,9 @@ using Unity.Jobs;
 namespace Revoxel.World
 {
     // Generates one chunk. Fast path: from the column samples, a chunk entirely above the
-    // surface and sea level is uniform Air, one entirely below the subsurface band uniform
-    // Stone, one between the surface and sea level uniform Water, with no per-voxel work.
+    // surface and the water is uniform Air, one entirely below the subsurface band uniform
+    // Stone, one between the surface and the water level uniform Water, with no per-voxel
+    // work.
     // Result is allocated with Allocator.Persistent and owned by the caller. Compiled
     // synchronously so the editor never mixes managed and Burst chunks (float rounding).
     [BurstCompile(CompileSynchronously = true)]
@@ -28,7 +29,7 @@ namespace Revoxel.World
                 Allocator.Temp
             );
             TerrainGenerator.ComputeSamples(Params, Coords.ChunkOrigin(Coord).xz, samples);
-            var range = TerrainGenerator.HeightRange(samples);
+            var range = TerrainGenerator.Range(samples);
             var kind = TerrainGenerator.Classify(Params, range, Coord.Value.y, out var id);
             if (kind != ChunkKind.Mixed)
             {

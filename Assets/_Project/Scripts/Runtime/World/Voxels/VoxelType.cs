@@ -23,6 +23,10 @@ namespace Revoxel.World
         private bool _isOpaque = true;
 
         [SerializeField]
+        [Tooltip("Liquid voxels (water) are drawn with the water shader, only toward air (D-073).")]
+        private bool _isLiquid;
+
+        [SerializeField]
         [Tooltip("sRGB true color of the material. Placeholder value (Q-12).")]
         private Color _baseColor = Color.white;
 
@@ -54,6 +58,8 @@ namespace Revoxel.World
 
         public bool IsOpaque => _isOpaque;
 
+        public bool IsLiquid => _isLiquid;
+
         public Color BaseColor => _baseColor;
 
         public Color SecondaryColor => _secondaryColor;
@@ -73,7 +79,8 @@ namespace Revoxel.World
             Color secondaryColor,
             SurfacePattern pattern,
             float patternScale,
-            float patternContrast
+            float patternContrast,
+            bool isLiquid = false
         )
         {
             _id = id;
@@ -85,6 +92,7 @@ namespace Revoxel.World
             _pattern = pattern;
             _patternScale = patternScale;
             _patternContrast = patternContrast;
+            _isLiquid = isLiquid;
         }
     }
 }

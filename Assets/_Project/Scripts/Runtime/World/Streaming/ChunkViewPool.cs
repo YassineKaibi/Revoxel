@@ -22,12 +22,13 @@ namespace Revoxel.World
         private readonly Stack<ChunkView> _free = new Stack<ChunkView>();
         private readonly List<ChunkView> _all = new List<ChunkView>();
         private readonly Transform _parent;
-        private readonly Material _material;
+        private readonly Material[] _materials;
 
-        public ChunkViewPool(Transform parent, Material material)
+        // One material per render submesh: voxels, then liquids (D-073).
+        public ChunkViewPool(Transform parent, Material[] materials)
         {
             _parent = parent;
-            _material = material;
+            _materials = materials;
         }
 
         public int ActiveCount { get; private set; }
@@ -80,7 +81,11 @@ namespace Revoxel.World
                 CollisionMesh = new Mesh { name = "ChunkCollision" },
             };
             view.Renderer = go.AddComponent<MeshRenderer>();
-            view.Renderer.sharedMaterial = _material;
+            if (_materials != null)
+            {
+                view.Renderer.sharedMaterials = _materials;
+            }
+
             view.Filter.sharedMesh = view.RenderMesh;
             _all.Add(view);
             return view;

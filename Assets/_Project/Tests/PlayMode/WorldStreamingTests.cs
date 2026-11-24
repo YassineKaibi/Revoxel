@@ -125,6 +125,7 @@ namespace Revoxel.Tests.PlayMode
             var leaksBefore = UnsafeUtility.CheckForLeaks();
             VoxelWorld world = null;
             yield return LoadIslandWithFocus(w => world = w);
+            yield return WaitFor(() => world.IsStreaming, "the water plan");
             for (var i = 0; i < 10; i++)
             {
                 yield return null;
@@ -141,6 +142,119 @@ namespace Revoxel.Tests.PlayMode
             yield return null;
             yield return null;
 
+            Assert.That(
+                UnsafeUtility.CheckForLeaks(),
+                Is.LessThanOrEqualTo(leaksBefore),
+                "Native leaks"
+            );
+            Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
+        }
+
+        // Task 5b (D-077): the water plan builds in the background. No frame from the load
+        // on takes 100 ms more than the median of the frames while it builds; it is ready
+        // within 5 s, and streaming (and the loading progress) waits for it.
+        [UnityTest]
+        public IEnumerator World_BuildsTheWaterPlanWithoutBlocking()
+        {
+            var frames = new List<float>();
+            var load = SceneManager.LoadSceneAsync(
+                GameBootstrap.IslandSceneName,
+                LoadSceneMode.Single
+            );
+            var last = Time.realtimeSinceStartup;
+            while (!load.isDone)
+            {
+                yield return null;
+            }
+
+            var world = Object.FindAnyObjectByType<VoxelWorld>();
+            Assert.That(world, Is.Not.Null, "No VoxelWorld in Island");
+            var start = Time.realtimeSinceStartup;
+            last = start;
+            while (!world.IsWaterPlanReady)
+            {
+                Assert.That(world.IsStreaming, Is.False, "streaming before the plan");
+                Assert.That(world.LoadProgress, Is.Zero, "progress before the plan");
+                Assert.That(
+                    Time.realtimeSinceStartup - start,
+                    Is.LessThan(5f),
+                    "the plan within 5 s"
+                );
+                yield return null;
+                var now = Time.realtimeSinceStartup;
+                frames.Add(now - last);
+                last = now;
+            }
+
+            yield return null;
+            Assert.That(world.IsStreaming, Is.True);
+            if (frames.Count >= 3)
+            {
+                var sorted = new List<float>(frames);
+                sorted.Sort();
+                var median = sorted[sorted.Count / 2];
+                Assert.That(
+                    sorted[sorted.Count - 1] - median,
+                    Is.LessThan(0.1f),
+                    $"frames {string.Join(", ", frames)}"
+                );
+            }
+
+            Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
+        }
+
+        // A query before the plan is built waits for it and answers as after.
+        [UnityTest]
+        public IEnumerator World_QueryBeforePlanReady_Completes()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                GameBootstrap.IslandSceneName,
+                LoadSceneMode.Single
+            );
+            var world = Object.FindAnyObjectByType<VoxelWorld>();
+            Assert.That(world, Is.Not.Null, "No VoxelWorld in Island");
+            yield return null;
+            var points = new[] { new int2(0, 0), new int2(4000, -2500), new int2(-9000, 6000) };
+            var before = new float[points.Length];
+            for (var i = 0; i < points.Length; i++)
+            {
+                Assert.That(
+                    world.TryGetSurfaceHeightMeters(points[i].x, points[i].y, out before[i]),
+                    Is.True
+                );
+            }
+
+            Assert.That(world.IsWaterPlanReady, Is.True, "the query completed the build");
+            yield return WaitFor(() => world.IsStreaming, "streaming");
+            for (var i = 0; i < points.Length; i++)
+            {
+                Assert.That(
+                    world.TryGetSurfaceHeightMeters(points[i].x, points[i].y, out var after),
+                    Is.True
+                );
+                Assert.That(after, Is.EqualTo(before[i]), $"{points[i]}");
+            }
+
+            Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
+        }
+
+        // Destroying the world while its plan builds waits for the jobs and frees them.
+        [UnityTest]
+        public IEnumerator World_DestroyDuringBuild_NoLeaks()
+        {
+            yield return UnloadAllScenes();
+            var leaksBefore = UnsafeUtility.CheckForLeaks();
+            yield return SceneManager.LoadSceneAsync(
+                GameBootstrap.IslandSceneName,
+                LoadSceneMode.Single
+            );
+            var world = Object.FindAnyObjectByType<VoxelWorld>();
+            Assert.That(world, Is.Not.Null, "No VoxelWorld in Island");
+            yield return null;
+            Assert.That(world.IsWaterPlanReady, Is.False, "the plan is still building");
+            Object.Destroy(world.gameObject);
+            yield return null;
+            yield return null;
             Assert.That(
                 UnsafeUtility.CheckForLeaks(),
                 Is.LessThanOrEqualTo(leaksBefore),
@@ -178,6 +292,72 @@ namespace Revoxel.Tests.PlayMode
             }
 
             Assert.That(world.TryGetBiome(new BiomeId(200), out _), Is.False);
+            Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
+        }
+
+        // PLAN-05 Task 4 (D-074): over loaded ground, the voxel water query agrees with the
+        // generated water: in water below the level with the surface at it, dry above. A
+        // lake column is used (lake levels are exact, so Burst and managed agree).
+        [UnityTest]
+        public IEnumerator World_WaterQuery_MatchesGenerator()
+        {
+            yield return UnloadAllScenes();
+            VoxelWorld world = null;
+            yield return LoadIslandWithFocus(w => world = w);
+            yield return WaitFor(() => world.IsSettled, "the world to settle");
+
+            // Around the deepest cell of the plan's first lake (D-081).
+            Assert.That(world.TerrainParameters.WaterPlan.Lakes.Length, Is.GreaterThan(0));
+            var lake = (int2)math.floor(world.TerrainParameters.WaterPlan.Lakes[0].DeepestPoint);
+            var found = false;
+            var at = int2.zero;
+            var column = default(WaterColumn);
+            const int searchMeters = 80;
+            for (var z = -searchMeters; z <= searchMeters && !found; z += 2)
+            for (var x = -searchMeters; x <= searchMeters && !found; x += 2)
+            {
+                var vx = lake.x + x * WorldConstants.VoxelsPerMeter;
+                var vz = lake.y + z * WorldConstants.VoxelsPerMeter;
+                Assert.That(world.TryGetWaterColumn(vx, vz, out var c), Is.True);
+                if (c.IsWet && c.Body == WaterBody.Lake && c.DepthMeters > 1f)
+                {
+                    found = true;
+                    at = new int2(vx, vz);
+                    column = c;
+                }
+            }
+
+            Assert.That(
+                found,
+                Is.True,
+                "no lake water within 80 m of the first lake's deepest cell"
+            );
+            Assert.That(
+                column.Level,
+                Is.EqualTo(WaterMap.Column(world.TerrainParameters, at.x, at.y).Level)
+            );
+            // Voxel samples need the lake's chunks: stream there first.
+            _focus.transform.position = new Vector3(
+                (at.x + 0.5f) * WorldConstants.VoxelSize,
+                column.SurfaceMeters + 2f,
+                (at.y + 0.5f) * WorldConstants.VoxelSize
+            );
+            yield return null;
+            yield return WaitFor(() => world.IsSettled, "the world to settle at the lake");
+            var below = new float3(
+                (at.x + 0.5f) * WorldConstants.VoxelSize,
+                (column.Level - 4) * WorldConstants.VoxelSize,
+                (at.y + 0.5f) * WorldConstants.VoxelSize
+            );
+            Assert.That(world.TrySampleWater(below, out var water), Is.True);
+            Assert.That(water.InWater, Is.True);
+            Assert.That(water.Body, Is.EqualTo(WaterBody.Lake));
+            Assert.That(water.SurfaceMeters, Is.EqualTo(column.SurfaceMeters).Within(1e-4f));
+            Assert.That(water.DepthMeters, Is.EqualTo(4 * WorldConstants.VoxelSize).Within(1e-4f));
+
+            var above = below + new float3(0f, 1f, 0f);
+            Assert.That(world.TrySampleWater(above, out var air), Is.True);
+            Assert.That(air.InWater, Is.False);
             Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
         }
 

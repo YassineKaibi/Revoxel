@@ -180,6 +180,61 @@ namespace Revoxel.Tests.EditMode
             Assert.That(_events.Count, Is.EqualTo(1));
         }
 
+        // D-074: the water query reads the loaded voxels: in water below the top of the
+        // liquid, with the surface there; out of it above; carving the top lowers the
+        // surface; no answer where nothing is loaded.
+        [Test]
+        public void World_TrySampleWater_ReadsLoadedVoxels()
+        {
+            var water = new VoxelId(1);
+            var coord = new ChunkCoord(0, 4, 0);
+            var dense = new NativeArray<ushort>(WorldConstants.VoxelsPerChunk, Allocator.Temp);
+            for (var i = 0; i < dense.Length; i++)
+            {
+                var y = Coords.LocalFromIndex(i).y;
+                dense[i] =
+                    y < 4 ? Stone.Value
+                    : y < 20 ? water.Value
+                    : VoxelId.Air.Value;
+            }
+
+            _world.InsertChunk(coord, ChunkVoxels.FromDense(dense, Allocator.Persistent));
+            dense.Dispose();
+            var baseY = 4 * WorldConstants.ChunkSize * WorldConstants.VoxelSize;
+            var surface = baseY + 20 * WorldConstants.VoxelSize;
+
+            Assert.That(
+                _world.TrySampleWater(new float3(0.5f, baseY + 1f, 0.5f), out var inside),
+                Is.True
+            );
+            Assert.That(inside.InWater, Is.True);
+            Assert.That(inside.SurfaceMeters, Is.EqualTo(surface).Within(1e-4f));
+            Assert.That(inside.DepthMeters, Is.EqualTo(surface - baseY - 1f).Within(1e-4f));
+            Assert.That(
+                inside.Submersion(baseY + 1f, 4f),
+                Is.EqualTo((surface - baseY - 1f) / 4f).Within(1e-4f)
+            );
+
+            Assert.That(
+                _world.TrySampleWater(new float3(0.5f, surface + 0.5f, 0.5f), out var above),
+                Is.True
+            );
+            Assert.That(above.InWater, Is.False);
+            Assert.That(above.Submersion(surface, 2f), Is.EqualTo(0f));
+
+            Assert.That(
+                _world.TrySetVoxel(new int3(0, 4 * WorldConstants.ChunkSize + 19, 0), VoxelId.Air),
+                Is.True
+            );
+            _world.TrySampleWater(new float3(0.05f, baseY + 1f, 0.05f), out var carved);
+            Assert.That(
+                carved.SurfaceMeters,
+                Is.EqualTo(surface - WorldConstants.VoxelSize).Within(1e-4f)
+            );
+
+            Assert.That(_world.TrySampleWater(new float3(100f, baseY, 100f), out _), Is.False);
+        }
+
         // Inserts uniform chunks for every chunk coordinate from min to max (inclusive)
         // that is inside the island.
         private void Insert(VoxelId id, int3 min, int3? max = null)

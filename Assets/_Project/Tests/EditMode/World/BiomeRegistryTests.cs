@@ -118,6 +118,42 @@ namespace Revoxel.Tests.EditMode
             }
         }
 
+        // D-072: the reef biome has coral heads; a reef without corals or rock is refused.
+        [Test]
+        public void Biome_ReefNeedsCoralsAndRock()
+        {
+            var depth = WorldAssets.LoadTerrainSettings().SubsurfaceDepthMeters;
+            Biome reef = null;
+            foreach (var biome in WorldAssets.LoadBiomeRegistry().Biomes)
+            {
+                if (biome.HasReef)
+                {
+                    reef = biome;
+                }
+            }
+
+            Assert.That(reef, Is.Not.Null, "no biome has a reef");
+            Assert.That(reef.NameKey, Is.EqualTo("biome.reef.name"));
+            var copy = Object.Instantiate(reef);
+            try
+            {
+                var so = new SerializedObject(copy);
+                so.FindProperty("_reefCorals").arraySize = 0;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                Assert.That(copy.TryValidate(depth, out var error), Is.False);
+                Assert.That(error, Does.Contain("reef"));
+
+                so.FindProperty("_reefCorals").arraySize = 1;
+                so.FindProperty("_reefRock").objectReferenceValue = null;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                Assert.That(copy.TryValidate(depth, out _), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(copy);
+            }
+        }
+
         // Breaks one field of one biome, expects the registry to fail with a message
         // containing the hint, then restores the field.
         private static void Expect(

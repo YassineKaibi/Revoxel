@@ -15,6 +15,7 @@ namespace Revoxel.Tests.EditMode
         public const ushort Stone = 1;
         public const ushort Water = 2;
         public const ushort Dirt = 3;
+        public const ushort Liquid = 4;
 
         private NativeArray<VoxelRenderData> _renderData;
 
@@ -27,12 +28,19 @@ namespace Revoxel.Tests.EditMode
             _renderData[Stone] = new VoxelRenderData { IsSolid = true, IsOpaque = true };
             _renderData[Dirt] = new VoxelRenderData { IsSolid = true, IsOpaque = true };
             _renderData[Water] = new VoxelRenderData { IsSolid = false, IsOpaque = false };
+            _renderData[Liquid] = new VoxelRenderData
+            {
+                IsSolid = false,
+                IsOpaque = false,
+                IsLiquid = true,
+            };
         }
 
         public struct Result
         {
             public int RenderVertices;
             public int RenderIndices;
+            public int LiquidIndices;
             public IndexFormat RenderIndexFormat;
             public int CollisionVertices;
             public int CollisionIndices;
@@ -41,28 +49,29 @@ namespace Revoxel.Tests.EditMode
         }
 
         // Builds the padded input from a function over x, y, z in -1..32, then meshes it.
-        public Result MeshPadded(Func<int3, ushort> voxelAt)
+        public Result MeshPadded(Func<int3, ushort> voxelAt, bool skipLiquidSides = false)
         {
             using var padded = Pad(voxelAt);
-            return Mesh(padded);
+            return Mesh(padded, skipLiquidSides);
         }
 
         // Chunk interior only; every neighbor layer is Air.
         public Result MeshChunk(Func<int3, ushort> voxelAt) =>
             MeshPadded(pos => Coords.IsLocalInRange(pos) ? voxelAt(pos) : Air);
 
-        public Result Mesh(NativeArray<ushort> padded)
+        public Result Mesh(NativeArray<ushort> padded, bool skipLiquidSides = false)
         {
             var meshes = UnityEngine.Mesh.AllocateWritableMeshData(2);
             try
             {
-                Run(padded, meshes);
+                Run(padded, meshes, skipLiquidSides);
                 var render = meshes[0];
                 var collision = meshes[1];
                 var result = new Result
                 {
                     RenderVertices = render.vertexCount,
                     RenderIndices = render.GetSubMesh(0).indexCount,
+                    LiquidIndices = render.subMeshCount > 1 ? render.GetSubMesh(1).indexCount : 0,
                     RenderIndexFormat = render.indexFormat,
                     CollisionVertices = collision.vertexCount,
                     CollisionIndices = collision.GetSubMesh(0).indexCount,
@@ -134,7 +143,11 @@ namespace Revoxel.Tests.EditMode
             return padded;
         }
 
-        private void Run(NativeArray<ushort> padded, UnityEngine.Mesh.MeshDataArray meshes)
+        private void Run(
+            NativeArray<ushort> padded,
+            UnityEngine.Mesh.MeshDataArray meshes,
+            bool skipLiquidSides = false
+        )
         {
             using var renderLayout = ChunkMesher.CreateRenderLayout(Allocator.TempJob);
             using var collisionLayout = ChunkMesher.CreateCollisionLayout(Allocator.TempJob);
@@ -146,6 +159,7 @@ namespace Revoxel.Tests.EditMode
                 CollisionLayout = collisionLayout,
                 RenderMesh = meshes[0],
                 CollisionMesh = meshes[1],
+                SkipLiquidSides = skipLiquidSides,
             }.Run();
         }
     }

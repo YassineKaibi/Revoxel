@@ -195,7 +195,7 @@ namespace Revoxel.Tests.EditMode
 
         private void BuildCell(in TerrainParams p, int level, int2 cell, bool walls)
         {
-            var range = TerrainGenerator.DetailHeightRange(p, cell, level);
+            var range = TerrainGenerator.DetailRange(p, cell, level);
             using var samples = new NativeArray<TerrainSample>(
                 TerrainGenerator.DetailSampleGridCount,
                 Allocator.TempJob

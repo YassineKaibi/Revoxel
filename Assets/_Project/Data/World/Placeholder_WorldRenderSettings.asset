@@ -14,3 +14,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Revoxel.World::Revoxel.World.WorldRenderSettings
   _corruptionTint: {r: 0.5411765, g: 0.5294118, b: 0.47058824, a: 1}
   _aoMin: 0.55
+  _waterScatter: {r: 0.04, g: 0.22, b: 0.26, a: 1}
+  _waterAbsorptionPerMeter: {x: 0.45, y: 0.09, z: 0.07}
+  _pollutedWaterScatter: {r: 0.2, g: 0.22, b: 0.13, a: 1}
+  _pollutedWaterAbsorptionPerMeter: {x: 0.9, y: 0.75, z: 0.7}
+  _waterPollutionShare: 0.6
+  _waterRefraction: 0.04
+  _waterWaveScaleMeters: 2.5
+  _waterWaveStrength: 0.12
+  _waterWaveSpeed: 0.35
+  _waterFallSpeed: 3
+  _waterFoamDepthMeters: 0.3
+  _waterFoamColor: {r: 0.92, g: 0.96, b: 1, a: 1}
+  _waterSmoothness: 0.93
+  _underwaterColor: {r: 0.03, g: 0.18, b: 0.22, a: 1}
+  _underwaterDensityPerMeter: 0.15

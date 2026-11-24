@@ -1,0 +1,851 @@
+using NUnit.Framework;
+using Revoxel.World;
+using Unity.Mathematics;
+using UnityEditor;
+
+namespace Revoxel.Tests.EditMode
+{
+    // The river and lake plan of the fixture seed (PLAN-05 Task 1, D-070, D-071).
+    public sealed class WaterPlanTests
+    {
+        private const string WaterSettingsPath =
+            "Assets/_Project/Data/World/Placeholder_WaterSettings.asset";
+
+        private const float LevelEpsilon = 1e-3f;
+
+        [Test]
+        public void Water_SettingsAssetIsValidAndUsed()
+        {
+            var settings = AssetDatabase.LoadAssetAtPath<WaterSettings>(WaterSettingsPath);
+
+            Assert.That(settings, Is.Not.Null, WaterSettingsPath);
+            Assert.That(settings.name, Does.StartWith("Placeholder_"));
+            Assert.That(settings.TryValidate(out var error), Is.True, error);
+            Assert.That(WorldAssets.LoadTerrainSettings().WaterSettings, Is.SameAs(settings));
+        }
+
+        // Done line: rivers (D-080). Seed 42 has at least 8, at least 15 km in all.
+        [Test]
+        public void Rivers_PlannedForFixtureSeed()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var length = 0f;
+            for (var r = 0; r < p.WaterPlan.Rivers.Length; r++)
+            {
+                var river = p.WaterPlan.Rivers[r];
+                Assert.That(river.Count, Is.GreaterThanOrEqualTo(2), $"river {r}");
+                for (var n = river.Start; n + 1 < river.Start + river.Count; n++)
+                {
+                    length += math.distance(p.WaterPlan.Nodes[n].Pos, p.WaterPlan.Nodes[n + 1].Pos);
+                }
+            }
+
+            Assert.That(p.WaterPlan.Rivers.Length, Is.GreaterThanOrEqualTo(8));
+            Assert.That(length * WorldConstants.VoxelSize, Is.GreaterThanOrEqualTo(15000f));
+        }
+
+        // Width grows with the water drained: never narrower downstream and within the
+        // settings' bounds, except in the flares where a river meets a lake (D-080 addendum).
+        [Test]
+        public void Rivers_WidenDownstream()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            for (var r = 0; r < p.WaterPlan.Rivers.Length; r++)
+            {
+                var river = p.WaterPlan.Rivers[r];
+                for (var n = river.Start; n < river.Start + river.Count; n++)
+                {
+                    var node = p.WaterPlan.Nodes[n];
+                    if (InFlare(p, river, n))
+                    {
+                        continue;
+                    }
+
+                    Assert.That(
+                        node.HalfWidth,
+                        Is.InRange(p.MinHalfWidth - 1e-3f, p.MaxHalfWidth + 1e-3f),
+                        $"river {r}"
+                    );
+                    if (n > river.Start && !InFlare(p, river, n - 1))
+                    {
+                        Assert.That(
+                            node.HalfWidth,
+                            Is.GreaterThanOrEqualTo(p.WaterPlan.Nodes[n - 1].HalfWidth - 1e-3f),
+                            $"river {r} node {n - river.Start}"
+                        );
+                    }
+                }
+            }
+        }
+
+        // 2026-11-24 reviews (outlets "carved right in the lake ... deeper than the lake
+        // itself"; then "their depths don't match ... the stream is clearly higher than the
+        // lake"; "the V shape is bad ... it should follow the existing voxel lines"): along
+        // the axis of every mouth, from the lake outward over the flare, every column is
+        // water; an outlet's water is the lake's level (an inlet ends at it); the bed has
+        // no ridge between the lake and the channel (never more than a voxel above both
+        // ends); and the water opens like a funnel where the terrain lets it: no mouth is
+        // narrower in its middle than at its end, and on average 1.5 times as wide.
+        [Test]
+        public void Lakes_MouthsJoinTheLake()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            var mouths = 0;
+            var outlets = 0;
+            var ratios = new System.Collections.Generic.List<float>();
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                for (var end = 0; end < 2; end++)
+                {
+                    var k = end == 0 ? river.SourceLake : river.EndLake;
+                    if (k < 0)
+                    {
+                        continue;
+                    }
+
+                    mouths++;
+                    outlets += end == 0 ? 1 : 0;
+                    var lake = plan.Lakes[k];
+                    // The mouth: from the lake end while the river is open toward its lake.
+                    var axis = new System.Collections.Generic.List<RiverNode>();
+                    for (var i = 0; i < river.Count; i++)
+                    {
+                        var node = plan.Nodes[
+                            end == 0 ? river.Start + i : river.Start + river.Count - 1 - i
+                        ];
+                        if (node.Open <= 0f)
+                        {
+                            break;
+                        }
+
+                        axis.Add(node);
+                    }
+
+                    var grounds = new int[axis.Count];
+                    for (var i = 0; i < axis.Count; i++)
+                    {
+                        var at = (int2)math.floor(axis[i].Pos);
+                        var column = WaterMap.Column(p, at.x, at.y);
+                        Assert.That(
+                            column.IsWet,
+                            Is.True,
+                            $"river {r} mouth {end} node {i} at {at} dry"
+                        );
+                        if (end == 0)
+                        {
+                            Assert.That(
+                                column.Level,
+                                Is.EqualTo((int)lake.Level),
+                                $"river {r} outlet node {i} at {at}"
+                            );
+                        }
+
+                        grounds[i] = column.Ground;
+                    }
+
+                    if (end == 1)
+                    {
+                        Assert.That(
+                            axis[0].Level,
+                            Is.EqualTo(lake.Level).Within(LevelEpsilon),
+                            $"river {r} inlet level"
+                        );
+                    }
+
+                    var ends = math.max(grounds[0], grounds[grounds.Length - 1]);
+                    for (var i = 0; i < grounds.Length; i++)
+                    {
+                        Assert.That(
+                            grounds[i],
+                            Is.LessThanOrEqualTo(ends + 1),
+                            $"river {r} mouth {end}: ridge at node {i} ({string.Join(",", grounds)})"
+                        );
+                    }
+
+                    // The funnel, out of the lake's water (open below 1): the water across its
+                    // middle against its end, each counted within that node's lowering band.
+                    var outside = axis.FindAll(node => node.Open < 1f);
+                    if (outside.Count >= 3)
+                    {
+                        var ratio =
+                            WaterWidth(p, outside, outside.Count / 2)
+                            / math.max(1f, WaterWidth(p, outside, outside.Count - 1));
+                        Assert.That(
+                            ratio,
+                            Is.GreaterThanOrEqualTo(1f),
+                            $"river {r} mouth {end} narrows toward the lake"
+                        );
+                        ratios.Add(ratio);
+                    }
+                }
+            }
+
+            var mean = 0f;
+            foreach (var ratio in ratios)
+            {
+                mean += ratio / ratios.Count;
+            }
+
+            Assert.That(
+                mean,
+                Is.GreaterThanOrEqualTo(1.5f),
+                $"mouth funnels {string.Join(", ", ratios)}"
+            );
+            Assert.That(outlets, Is.EqualTo(plan.Lakes.Length));
+            Assert.That(mouths, Is.GreaterThan(outlets));
+        }
+
+        // Width of the water across the axis at node i, voxels, counted out to the node's
+        // lowering band on each side ((half width + bank) x (1 + spread x open)).
+        private static float WaterWidth(
+            in TerrainParams p,
+            System.Collections.Generic.List<RiverNode> axis,
+            int i
+        )
+        {
+            var node = axis[i];
+            var dir = i + 1 < axis.Count ? axis[i + 1].Pos - node.Pos : node.Pos - axis[i - 1].Pos;
+            var side = math.normalizesafe(new float2(-dir.y, dir.x));
+            var band = (int)((node.HalfWidth + p.BankWidth) * (1f + p.MouthSpread * node.Open));
+            var width = 0f;
+            for (var s = -1; s <= 1; s += 2)
+            {
+                var k = 0;
+                while (k < band)
+                {
+                    var q = (int2)math.floor(node.Pos + side * (s * (k + 1)));
+                    if (!WaterMap.Column(p, q.x, q.y).IsWet)
+                    {
+                        break;
+                    }
+
+                    k++;
+                }
+
+                width += k;
+            }
+
+            return width;
+        }
+
+        // 2026-11-24 review ("too straight"): rivers wind. Over every 100 m window of each
+        // river longer than 300 m (flares excluded), path length over straight distance
+        // averages at least 1.04, and at least 1.02 for every such river.
+        [Test]
+        public void Rivers_Wind()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            var window = 100f * WorldConstants.VoxelsPerMeter;
+            var rivers = 0;
+            var sum = 0f;
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                if (Length(plan, river) < 300f * WorldConstants.VoxelsPerMeter)
+                {
+                    continue;
+                }
+
+                var windows = 0;
+                var total = 0f;
+                for (var i = river.Start; i < river.Start + river.Count; i++)
+                {
+                    if (InFlare(p, river, i))
+                    {
+                        continue;
+                    }
+
+                    var arc = 0f;
+                    var j = i;
+                    while (
+                        j + 1 < river.Start + river.Count
+                        && arc < window
+                        && !InFlare(p, river, j + 1)
+                    )
+                    {
+                        arc += math.distance(plan.Nodes[j].Pos, plan.Nodes[j + 1].Pos);
+                        j++;
+                    }
+
+                    if (arc >= window)
+                    {
+                        total += arc / math.distance(plan.Nodes[i].Pos, plan.Nodes[j].Pos);
+                        windows++;
+                    }
+                }
+
+                if (windows == 0)
+                {
+                    continue;
+                }
+
+                var mean = total / windows;
+                Assert.That(mean, Is.GreaterThanOrEqualTo(1.02f), $"river {r} sinuosity");
+                sum += mean;
+                rivers++;
+            }
+
+            Assert.That(rivers, Is.GreaterThanOrEqualTo(5));
+            Assert.That(sum / rivers, Is.GreaterThanOrEqualTo(1.04f), "mean sinuosity");
+        }
+
+        // 2026-11-24 review ("almost constant depth"): pools and riffles. Along each river
+        // longer than 300 m (flares excluded), depth's coefficient of variation is at least
+        // 0.15.
+        [Test]
+        public void Rivers_DepthVaries()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            var rivers = 0;
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                if (Length(plan, river) < 300f * WorldConstants.VoxelsPerMeter)
+                {
+                    continue;
+                }
+
+                var n = 0;
+                var mean = 0.0;
+                var square = 0.0;
+                for (var i = river.Start; i < river.Start + river.Count; i++)
+                {
+                    if (!InFlare(p, river, i))
+                    {
+                        var d = plan.Nodes[i].Depth;
+                        mean += d;
+                        square += d * d;
+                        n++;
+                    }
+                }
+
+                mean /= n;
+                var spread = math.sqrt(math.max(0.0, square / n - mean * mean)) / mean;
+                Assert.That(spread, Is.GreaterThanOrEqualTo(0.15), $"river {r} depth variation");
+                rivers++;
+            }
+
+            Assert.That(rivers, Is.GreaterThanOrEqualTo(5));
+        }
+
+        private static float Length(in WaterPlan plan, in River river)
+        {
+            var length = 0f;
+            for (var k = river.Start; k + 1 < river.Start + river.Count; k++)
+            {
+                length += math.distance(plan.Nodes[k].Pos, plan.Nodes[k + 1].Pos);
+            }
+
+            return length;
+        }
+
+        // Within the flare of a river's source or end lake, by arc length.
+        private static bool InFlare(in TerrainParams p, in River river, int n)
+        {
+            var plan = p.WaterPlan;
+            var fromStart = 0f;
+            for (var k = river.Start; k < n; k++)
+            {
+                fromStart += math.distance(plan.Nodes[k].Pos, plan.Nodes[k + 1].Pos);
+            }
+
+            var toEnd = 0f;
+            for (var k = n; k + 1 < river.Start + river.Count; k++)
+            {
+                toEnd += math.distance(plan.Nodes[k].Pos, plan.Nodes[k + 1].Pos);
+            }
+
+            return (river.SourceLake >= 0 && fromStart < p.FlareLength)
+                || (river.EndLake >= 0 && toEnd < p.FlareLength);
+        }
+
+        // Review Focus 3: no kinks. Consecutive segments turn by at most 35°, except at the
+        // nodes of a fall and at a river's last node (a confluence or a mouth).
+        [Test]
+        public void Rivers_AreSmooth()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var turns = 0;
+            for (var r = 0; r < p.WaterPlan.Rivers.Length; r++)
+            {
+                var river = p.WaterPlan.Rivers[r];
+                for (var n = river.Start + 1; n + 2 < river.Start + river.Count; n++)
+                {
+                    var a = p.WaterPlan.Nodes[n - 1];
+                    var b = p.WaterPlan.Nodes[n];
+                    var c = p.WaterPlan.Nodes[n + 1];
+                    if (a.Level - b.Level >= p.FallMin || b.Level - c.Level >= p.FallMin)
+                    {
+                        continue;
+                    }
+
+                    var u = b.Pos - a.Pos;
+                    var v = c.Pos - b.Pos;
+                    if (math.lengthsq(u) < 1f || math.lengthsq(v) < 1f)
+                    {
+                        continue;
+                    }
+
+                    var cos = math.dot(math.normalize(u), math.normalize(v));
+                    var degrees = math.degrees(math.acos(math.clamp(cos, -1f, 1f)));
+                    Assert.That(
+                        degrees,
+                        Is.LessThanOrEqualTo(35f),
+                        $"river {r} node {n - river.Start} at {b.Pos}"
+                    );
+                    turns++;
+                }
+            }
+
+            Assert.That(turns, Is.GreaterThan(100));
+        }
+
+        // Review Focus 2 (the 2026-11-23 screenshot): rivers lie in their valleys, not on
+        // dikes. Dry columns within 40 m of a river stand above the shaped land by more than
+        // a voxel on under 0.2 % of the samples and never by more than 8 voxels, away from
+        // falls and river ends (24 m).
+        [Test]
+        public void Rivers_FollowValleyFloors()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            var v = WorldConstants.VoxelsPerMeter;
+            var excluded = new System.Collections.Generic.List<float2>();
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                excluded.Add(plan.Nodes[river.Start].Pos);
+                excluded.Add(plan.Nodes[river.Start + river.Count - 1].Pos);
+                for (var n = river.Start; n + 1 < river.Start + river.Count; n++)
+                {
+                    if (plan.Nodes[n].Level - plan.Nodes[n + 1].Level >= p.FallMin)
+                    {
+                        excluded.Add(plan.Nodes[n].Pos);
+                        excluded.Add(plan.Nodes[n + 1].Pos);
+                    }
+                }
+            }
+
+            var dry = 0;
+            var raised = 0;
+            var highest = 0;
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                for (var n = river.Start; n + 1 < river.Start + river.Count; n += 2)
+                {
+                    var a = plan.Nodes[n].Pos;
+                    var dir = math.normalizesafe(plan.Nodes[n + 1].Pos - a);
+                    var side = new float2(-dir.y, dir.x);
+                    if (dir.Equals(float2.zero) || Near(excluded, a, 24f * v + 40f * v))
+                    {
+                        continue;
+                    }
+
+                    for (var k = -40; k <= 40; k++)
+                    {
+                        var q = (int2)math.floor(a + side * (k * v));
+                        var column = WaterMap.Column(p, q.x, q.y);
+                        var shaped = TerrainGenerator.ShapedLandHeight(p, q.x, q.y);
+                        if (column.IsWet || shaped < p.SeaLevel)
+                        {
+                            continue;
+                        }
+
+                        dry++;
+                        var up = column.Ground - (int)math.floor(shaped);
+                        raised += up > 1 ? 1 : 0;
+                        highest = math.max(highest, up);
+                    }
+                }
+            }
+
+            Assert.That(dry, Is.GreaterThan(10000), "dry samples");
+            Assert.That(
+                (float)raised / dry,
+                Is.LessThan(0.002f),
+                $"raised share ({raised} of {dry})"
+            );
+            Assert.That(highest, Is.LessThanOrEqualTo(8), "highest raise, voxels");
+        }
+
+        // D-080: every lake drains. Exactly one river starts at each lake, at its level, at
+        // least the minimum half width.
+        [Test]
+        public void Lakes_AllHaveAnOutlet()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            Assert.That(plan.Lakes.Length, Is.GreaterThan(0));
+            for (var k = 0; k < plan.Lakes.Length; k++)
+            {
+                var outlets = 0;
+                for (var r = 0; r < plan.Rivers.Length; r++)
+                {
+                    if (plan.Rivers[r].SourceLake != k)
+                    {
+                        continue;
+                    }
+
+                    var source = plan.Nodes[plan.Rivers[r].Start];
+                    Assert.That(
+                        source.Level,
+                        Is.EqualTo(plan.Lakes[k].Level).Within(LevelEpsilon),
+                        $"lake {k}"
+                    );
+                    Assert.That(
+                        source.HalfWidth,
+                        Is.GreaterThanOrEqualTo(p.MinHalfWidth - 1e-3f),
+                        $"lake {k}"
+                    );
+                    outlets++;
+                }
+
+                Assert.That(outlets, Is.EqualTo(1), $"outlets of lake {k}");
+            }
+        }
+
+        // Review Focus 5: mouths meet the sea. A river ending at sea level ends where the
+        // shaped land is below the sea, and along its last segment the columns are wet or at
+        // most 1 m above the sea.
+        [Test]
+        public void Rivers_MouthsMeetTheSea()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            var mouths = 0;
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                var last = plan.Nodes[river.Start + river.Count - 1];
+                if (math.abs(last.Level - p.SeaLevel) >= LevelEpsilon || river.Count < 2)
+                {
+                    continue;
+                }
+
+                // A tributary joining an estuary at sea level ends on that river, not at sea.
+                var joins = false;
+                for (var n = 0; n < river.Start && !joins; n++)
+                {
+                    joins = math.distancesq(plan.Nodes[n].Pos, last.Pos) < LevelEpsilon;
+                }
+
+                if (joins)
+                {
+                    continue;
+                }
+
+                mouths++;
+                var at = (int2)math.floor(last.Pos);
+                Assert.That(
+                    TerrainGenerator.ShapedLandHeight(p, at.x, at.y),
+                    Is.LessThan(p.SeaLevel),
+                    $"river {r} mouth"
+                );
+                var before = plan.Nodes[river.Start + river.Count - 2].Pos;
+                for (var s = 0; s <= 8; s++)
+                {
+                    var q = (int2)math.floor(math.lerp(before, last.Pos, s / 8f));
+                    var column = WaterMap.Column(p, q.x, q.y);
+                    Assert.That(
+                        column.IsWet || column.Ground <= p.SeaLevel + WorldConstants.VoxelsPerMeter,
+                        Is.True,
+                        $"river {r} at {q}"
+                    );
+                }
+            }
+
+            Assert.That(mouths, Is.GreaterThanOrEqualTo(3));
+        }
+
+        [Test]
+        public void Rivers_LevelsNeverRiseDownstream()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            for (var r = 0; r < p.WaterPlan.Rivers.Length; r++)
+            {
+                var river = p.WaterPlan.Rivers[r];
+                for (var n = river.Start; n < river.Start + river.Count; n++)
+                {
+                    var node = p.WaterPlan.Nodes[n];
+                    Assert.That(node.Level, Is.GreaterThanOrEqualTo(p.SeaLevel), $"river {r}");
+                    if (n > river.Start)
+                    {
+                        Assert.That(
+                            node.Level,
+                            Is.LessThanOrEqualTo(p.WaterPlan.Nodes[n - 1].Level + LevelEpsilon),
+                            $"river {r} node {n - river.Start}"
+                        );
+                    }
+                }
+            }
+        }
+
+        // Each river ends at the sea, in a lake (at its level) or on an earlier river (at
+        // that river's level there); several reach the sea themselves.
+        [Test]
+        public void Rivers_EndAtTheSeaALakeOrAnotherRiver()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var atSea = 0;
+            for (var r = 0; r < p.WaterPlan.Rivers.Length; r++)
+            {
+                var river = p.WaterPlan.Rivers[r];
+                var mouth = p.WaterPlan.Nodes[river.Start + river.Count - 1];
+                if (math.abs(mouth.Level - p.SeaLevel) < LevelEpsilon)
+                {
+                    atSea++;
+                    continue;
+                }
+
+                var joins = false;
+                for (var i = 0; i < p.WaterPlan.Lakes.Length && !joins; i++)
+                {
+                    joins = math.abs(mouth.Level - p.WaterPlan.Lakes[i].Level) < LevelEpsilon;
+                }
+
+                for (var n = 0; n < p.WaterPlan.Rivers[r].Start && !joins; n++)
+                {
+                    var node = p.WaterPlan.Nodes[n];
+                    joins =
+                        math.distance(node.Pos, mouth.Pos) < LevelEpsilon
+                        && math.abs(node.Level - mouth.Level) < LevelEpsilon;
+                }
+
+                Assert.That(joins, Is.True, $"river {r} ends at {mouth.Pos} in nothing");
+            }
+
+            Assert.That(atSea, Is.GreaterThanOrEqualTo(3));
+        }
+
+        // Done line: rivers carve canyons (D-079): somewhere a river runs at least 10 m
+        // below the raw land, in the valley erosion made, with river water there.
+        [Test]
+        public void Rivers_RunInValleys()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var deepest = 0f;
+            var wetInValley = 0;
+            for (var n = 0; n < p.WaterPlan.Nodes.Length; n++)
+            {
+                var node = p.WaterPlan.Nodes[n];
+                var x = (int)math.floor(node.Pos.x);
+                var z = (int)math.floor(node.Pos.y);
+                var cut = TerrainGenerator.LandHeight(p, x, z, out _) - node.Level;
+                deepest = math.max(deepest, cut);
+                if (
+                    cut >= 10f * WorldConstants.VoxelsPerMeter
+                    && wetInValley == 0
+                    && WetWithin(p, x, z, (int)node.HalfWidth, WaterBody.River)
+                )
+                {
+                    wetInValley++;
+                }
+            }
+
+            Assert.That(deepest, Is.GreaterThan(10f * WorldConstants.VoxelsPerMeter));
+            Assert.That(wetInValley, Is.GreaterThan(0));
+        }
+
+        // Done line: waterfalls. Drops of at least FallMin between nodes, and the water
+        // level at the column above a fall's top and below its foot differs by about that.
+        [Test]
+        public void Rivers_FallFromCliffs()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var falls = 0;
+            for (var n = 0; n + 1 < p.WaterPlan.Nodes.Length; n++)
+            {
+                var top = p.WaterPlan.Nodes[n];
+                var foot = p.WaterPlan.Nodes[n + 1];
+                if (
+                    top.Level - foot.Level >= p.FallMin
+                    && math.distance(top.Pos, foot.Pos) < p.RiverStep * 0.5f
+                )
+                {
+                    falls++;
+                }
+            }
+
+            Assert.That(falls, Is.GreaterThanOrEqualTo(10));
+        }
+
+        // D-081: lakes fill real basins. Seed 42 has at least three; every lake cell lies
+        // below the level (plus the margin and one level step), every cell beside the lake
+        // stands at or above it, and the level sits on the 1 m step.
+        [Test]
+        public void Lakes_FillRealBasins()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            Assert.That(plan.Lakes.Length, Is.GreaterThanOrEqualTo(3));
+            for (var i = 0; i < HydroGrid.CellCount; i++)
+            {
+                var k = plan.LakeOf[i] - 1;
+                if (k < 0)
+                {
+                    continue;
+                }
+
+                var lake = plan.Lakes[k];
+                var cell = HydroGrid.Cell(i);
+                Assert.That(
+                    Surface(p, cell),
+                    Is.LessThan(lake.Level + p.LakeMargin + p.LakeLevelStep),
+                    $"lake {k} cell {cell}"
+                );
+                for (var n = 0; n < 4; n++)
+                {
+                    var c = cell + DepressionFill.Neighbor(n);
+                    if (HydroGrid.InGrid(c) && plan.LakeOf[HydroGrid.Index(c)] == 0)
+                    {
+                        Assert.That(
+                            Surface(p, c),
+                            Is.GreaterThanOrEqualTo(lake.Level - 1e-3f),
+                            $"rim of lake {k} at {c}"
+                        );
+                    }
+                }
+            }
+
+            for (var k = 0; k < plan.Lakes.Length; k++)
+            {
+                var lake = plan.Lakes[k];
+                Assert.That(lake.Level % p.LakeLevelStep, Is.EqualTo(0f));
+                Assert.That(lake.Level, Is.GreaterThan(p.SeaLevel));
+                // The outlet may enter a lower lake, never this one.
+                Assert.That(plan.LakeOf[lake.Spill], Is.Not.EqualTo(k + 1), $"outlet of lake {k}");
+            }
+        }
+
+        // The deepest cell of every lake holds lake water at least 1 m deep.
+        [Test]
+        public void Lakes_HaveWaterAtTheirDeepestCell()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            for (var k = 0; k < p.WaterPlan.Lakes.Length; k++)
+            {
+                var lake = p.WaterPlan.Lakes[k];
+                var at = (int2)math.floor(lake.DeepestPoint);
+                var column = WaterMap.Column(p, at.x, at.y);
+                Assert.That(column.Body, Is.EqualTo(WaterBody.Lake), $"lake {k}");
+                Assert.That(column.Level, Is.EqualTo((int)lake.Level), $"lake {k}");
+                Assert.That(column.DepthMeters, Is.GreaterThanOrEqualTo(1f), $"lake {k}");
+            }
+        }
+
+        // Review Focus 1: no seed drowns its interior. Seeds 42 to 46: lakes cover at most
+        // 8 % of the land cells, and every seed has a lake.
+        [Test]
+        public void Lakes_StayAReasonableShare_SeveralSeeds()
+        {
+            var settings = WorldAssets.LoadTerrainSettings();
+            for (var seed = 42; seed <= 46; seed++)
+            {
+                var p = TerrainParams.Create(new WorldSeed(seed), settings);
+                try
+                {
+                    var land = 0;
+                    var lake = 0;
+                    for (var i = 0; i < HydroGrid.CellCount; i++)
+                    {
+                        var center = (int2)math.floor(HydroGrid.Center(HydroGrid.Cell(i)));
+                        if (TerrainGenerator.LandHeight(p, center.x, center.y, out _) >= p.SeaLevel)
+                        {
+                            land++;
+                            lake += p.WaterPlan.LakeOf[i] > 0 ? 1 : 0;
+                        }
+                    }
+
+                    Assert.That(
+                        p.WaterPlan.Lakes.Length,
+                        Is.GreaterThanOrEqualTo(1),
+                        $"seed {seed}"
+                    );
+                    Assert.That((float)lake / land, Is.LessThanOrEqualTo(0.08f), $"seed {seed}");
+                }
+                finally
+                {
+                    p.Dispose();
+                }
+            }
+        }
+
+        // The shaped land at a cell's center.
+        private static float Surface(in TerrainParams p, int2 cell)
+        {
+            var center = (int2)math.floor(HydroGrid.Center(cell));
+            return TerrainGenerator.ShapedLandHeight(p, center.x, center.y);
+        }
+
+        [Test]
+        public void Water_PlanIsDeterministic()
+        {
+            // Fresh builds: the shared cache would compare a plan with itself.
+            var settings = WorldAssets.LoadTerrainSettings();
+            var a = TerrainParams.Create(new WorldSeed(Seeds.Fixture), settings);
+            var b = TerrainParams.Create(new WorldSeed(Seeds.Fixture), settings);
+            var other = TerrainParams.Create(new WorldSeed(Seeds.Other), settings);
+            try
+            {
+                Assert.That(b.WaterPlan.Nodes.Length, Is.EqualTo(a.WaterPlan.Nodes.Length));
+                Assert.That(b.WaterPlan.Lakes.Length, Is.EqualTo(a.WaterPlan.Lakes.Length));
+                for (var n = 0; n < a.WaterPlan.Nodes.Length; n++)
+                {
+                    Assert.That(b.WaterPlan.Nodes[n].Pos, Is.EqualTo(a.WaterPlan.Nodes[n].Pos));
+                    Assert.That(b.WaterPlan.Nodes[n].Level, Is.EqualTo(a.WaterPlan.Nodes[n].Level));
+                }
+
+                var differs = other.WaterPlan.Nodes.Length != a.WaterPlan.Nodes.Length;
+                for (var n = 0; !differs && n < a.WaterPlan.Nodes.Length; n++)
+                {
+                    differs = !other.WaterPlan.Nodes[n].Pos.Equals(a.WaterPlan.Nodes[n].Pos);
+                }
+
+                Assert.That(differs, Is.True);
+            }
+            finally
+            {
+                a.Dispose();
+                b.Dispose();
+                other.Dispose();
+            }
+        }
+
+        private static bool Near(
+            System.Collections.Generic.List<float2> points,
+            float2 q,
+            float distance
+        )
+        {
+            foreach (var point in points)
+            {
+                if (math.distancesq(point, q) < distance * distance)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool WetWithin(in TerrainParams p, int x, int z, int radius, WaterBody body)
+        {
+            for (var dz = -radius; dz <= radius; dz += 2)
+            for (var dx = -radius; dx <= radius; dx += 2)
+            {
+                var column = WaterMap.Column(p, x + dx, z + dz);
+                if (column.IsWet && column.Body == body)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+}

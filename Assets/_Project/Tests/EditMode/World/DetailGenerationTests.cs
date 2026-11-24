@@ -163,7 +163,7 @@ namespace Revoxel.Tests.EditMode
                 for (var cx = -1; cx <= 0; cx++)
                 {
                     var cell = new int2(cx, cz);
-                    var range = TerrainGenerator.DetailHeightRange(p, cell, level);
+                    var range = TerrainGenerator.DetailRange(p, cell, level);
                     for (var cy = 0; cy < WorldConstants.ChunksY >> level; cy++)
                     {
                         if (TerrainGenerator.DetailChunkNeedsMesh(p, range, cy, level, WallDepth))
