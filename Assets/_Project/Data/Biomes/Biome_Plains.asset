@@ -38,3 +38,37 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 3d2c6038121e47dfb4d46ad9cb5527a2, type: 2}
   _strataThicknessMeters: 2
   _wastePocketChance: 0.06
+  _treeCover: 0.05
+  _trees:
+  - {fileID: 11400000, guid: d7967272c7bb46818feb37741b670d52, type: 2}
+  - {fileID: 11400000, guid: 16b896777ffc48c7b66c264424edc931, type: 2}
+  - {fileID: 11400000, guid: f02c173dda51470d8b67118ab5365a49, type: 2}
+  _treeWeights:
+  - 3
+  - 1
+  - 2
+  _plants:
+  - _stem: {fileID: 11400000, guid: a3d544f2fb604476af4fb7e3977022f3, type: 2}
+    _head: {fileID: 0}
+    _cover: 0.45
+    _clumpMeters: 6
+    _heightMeters: {x: 0.125, y: 0.625}
+    _maxWaterDepthMeters: 0
+    _onShore: 0
+    _bend: 0.6
+  - _stem: {fileID: 11400000, guid: a3d544f2fb604476af4fb7e3977022f3, type: 2}
+    _head: {fileID: 11400000, guid: 2011c4b5f28544518c9fc65e6765b275, type: 2}
+    _cover: 0.06
+    _clumpMeters: 8
+    _heightMeters: {x: 0.25, y: 0.5}
+    _maxWaterDepthMeters: 0
+    _onShore: 0
+    _bend: 0.2
+  - _stem: {fileID: 11400000, guid: a3d544f2fb604476af4fb7e3977022f3, type: 2}
+    _head: {fileID: 11400000, guid: 0405839f8dec4cb58da401a248953293, type: 2}
+    _cover: 0.05
+    _clumpMeters: 10
+    _heightMeters: {x: 0.25, y: 0.5}
+    _maxWaterDepthMeters: 0
+    _onShore: 0
+    _bend: 0.2

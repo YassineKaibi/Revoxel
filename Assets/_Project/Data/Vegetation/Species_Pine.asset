@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3516755eb49b4432b6a21c31b9d31b32, type: 3}
+  m_Name: Species_Pine
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.TreeSpecies
+  _form: 1
+  _heightMeters: {x: 3, y: 24}
+  _trunkRadiusMeters: {x: 0.08, y: 0.45}
+  _lean: 0.05
+  _wander: 0.03
+  _crownBase: 0.35
+  _crownRadius: {x: 0.14, y: 0.22}
+  _leader: 1
+  _attractors: 120
+  _stepMeters: 0.4
+  _influenceMeters: 2.5
+  _killMeters: 0.8
+  _tropism: 0.2
+  _maxNodes: 240
+  _pipeExponent: 2.4
+  _whorlSpacingMeters: 0.45
+  _branchesPerWhorl: 6
+  _branchDroop: 0.35
+  _fronds: 9
+  _frondLengthMeters: 2.6
+  _rootFlare: 0.5
+  _flareHeightMeters: 0.5
+  _propRoots: 0
+  _propRootReachMeters: 1.5
+  _leafRadiusMeters: {x: 0.45, y: 0.7}
+  _leafPorosity: 0.15
+  _bark: {fileID: 11400000, guid: 6d987c9329ae4a01807f518b25addb65, type: 2}
+  _wood: {fileID: 11400000, guid: 7c2853e70f8db85c88c5bf2d1d7c36b9, type: 2}
+  _leaves: {fileID: 11400000, guid: 497660b8712d411791bab068b59cfef2, type: 2}
+  _maxSlope: 0.8
+  _minTemperatureC: -8
+  _maxWaterDepthMeters: 0
+  _growsOnShore: 0
+  _spacingMeters: 4.5

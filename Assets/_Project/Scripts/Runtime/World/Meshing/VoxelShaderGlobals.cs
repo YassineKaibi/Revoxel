@@ -51,11 +51,12 @@ namespace Revoxel.World
             Shader.SetGlobalFloat(CorruptionId, Mathf.Clamp01(corruption));
         }
 
-        // Fully corrupted, with the settings' tint and occlusion floor. The tint is passed
-        // as a vector in linear space, so no color space conversion applies.
+        // Clean (corruption 0, D-093) until the corruption WP streams a field, with the
+        // settings' tint and occlusion floor. The tint is passed as a vector in linear space,
+        // so no color space conversion applies.
         public static void SetDefaults(WorldRenderSettings settings)
         {
-            SetCorruption(1f);
+            SetCorruption(0f);
             Shader.SetGlobalVector(CorruptionTintId, settings.CorruptionTint.linear);
             Shader.SetGlobalFloat(AoMinId, settings.AoMin);
             Shader.SetGlobalVector(WaterScatterId, settings.WaterScatter.linear);

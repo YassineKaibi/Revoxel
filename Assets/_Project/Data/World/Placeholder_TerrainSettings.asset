@@ -79,3 +79,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 0722f457ba54409baea7d7ba84539065, type: 2}
   _biomes: {fileID: 11400000, guid: f955bcc52998488c947213ff60fd7850, type: 2}
   _waterSettings: {fileID: 11400000, guid: 00375be3894f4dcda78385d2a337893b, type: 2}
+  _vegetationSettings: {fileID: 11400000, guid: 3ade4127798d4cdb89226d7b950a4e51, type: 2}

@@ -12,18 +12,38 @@ namespace Revoxel.World
     }
 
     // Floored surface heights (min, max) and water levels (min, max) over a set of
-    // columns, voxels: what chunk classification needs (D-053, D-070).
+    // columns, voxels: what chunk classification needs (D-053, D-070); and the heights
+    // trees and ground plants take (min inclusive, max exclusive, D-084).
     public struct ColumnRange
     {
         public int2 Height;
         public int2 Water;
+        public int2 Vegetation;
 
         public static ColumnRange Empty =>
             new ColumnRange
             {
                 Height = new int2(int.MaxValue, int.MinValue),
                 Water = new int2(int.MaxValue, int.MinValue),
+                Vegetation = new int2(int.MaxValue, int.MinValue),
             };
+
+        public bool HasVegetation => Vegetation.x < Vegetation.y;
+
+        public void AddVegetation(int2 heights)
+        {
+            if (heights.x < heights.y)
+            {
+                Vegetation = new int2(
+                    math.min(Vegetation.x, heights.x),
+                    math.max(Vegetation.y, heights.y)
+                );
+            }
+        }
+
+        // True when vegetation takes any height from yMin to yMax (inclusive).
+        public bool VegetationOverlaps(int yMin, int yMax) =>
+            HasVegetation && Vegetation.x <= yMax && Vegetation.y > yMin;
 
         public void Add(int height, int water)
         {
@@ -35,7 +55,12 @@ namespace Revoxel.World
         // with the same code from the same samples, and the sea surface must stay exact so
         // the chunk above it remains uniform Air.
         public ColumnRange WidenedHeights(int by) =>
-            new ColumnRange { Height = Height + new int2(-by, by), Water = Water };
+            new ColumnRange
+            {
+                Height = Height + new int2(-by, by),
+                Water = Water,
+                Vegetation = HasVegetation ? Vegetation + new int2(-by, by) : Vegetation,
+            };
     }
 
     // The island generator (PLAN-04): pure functions of the parameters and the voxel or
@@ -60,6 +85,9 @@ namespace Revoxel.World
         private const int MoistureOctaves = 2;
         private const int BorderOctaves = 3;
         private const int PatchOctaves = 3;
+
+        // Height above a column's own plants that a bent stem from a neighbor may reach.
+        public const int BendMargin = 4;
 
         // Shape of the coral head noise (structure, not tuning): a coarse and a fine octave,
         // and the noise band over which a head rises from the floor.
@@ -144,6 +172,20 @@ namespace Revoxel.World
                 Reef = reef,
                 ReefBiome = reefBiome,
             };
+        }
+
+        // The biome of a column without its height (what tree candidates need, D-084), and
+        // the normalized weights of every biome there.
+        public static BiomeId BiomeAt(
+            in TerrainParams p,
+            int x,
+            int z,
+            ref FixedList128Bytes<float> weights
+        )
+        {
+            var fields = ComputeFields(p, x, z);
+            ComputeWeights(p, fields, ref weights);
+            return PickBiome(p, fields.Pos, weights);
         }
 
         // Normalized weight of every biome at a column (D-062), in id order.
@@ -336,7 +378,8 @@ namespace Revoxel.World
         {
             var yMin = cy * WorldConstants.ChunkSize;
             var yMax = yMin + WorldConstants.ChunkMask;
-            if (yMin >= math.max(range.Height.y, range.Water.y))
+            var vegetation = range.VegetationOverlaps(yMin, yMax);
+            if (yMin >= math.max(range.Height.y, range.Water.y) && !vegetation)
             {
                 id = VoxelId.Air;
                 return ChunkKind.UniformAir;
@@ -348,7 +391,7 @@ namespace Revoxel.World
                 return ChunkKind.UniformStone;
             }
 
-            if (yMin >= range.Height.y && yMax < range.Water.x)
+            if (yMin >= range.Height.y && yMax < range.Water.x && !vegetation)
             {
                 id = new VoxelId(p.Water);
                 return ChunkKind.UniformWater;
@@ -377,20 +420,39 @@ namespace Revoxel.World
             }
         }
 
-        // Floored surfaces and water levels over the chunk column's own 32 x 32 columns.
-        public static ColumnRange Range(NativeArray<TerrainSample> samples)
+        // Floored surfaces and water levels over the chunk column's own 32 x 32 columns,
+        // with the height its ground plants may take (D-087).
+        public static ColumnRange Range(in TerrainParams p, NativeArray<TerrainSample> samples)
         {
             var range = ColumnRange.Empty;
             for (var z = 0; z < WorldConstants.ChunkSize; z++)
             for (var x = 0; x < WorldConstants.ChunkSize; x++)
             {
                 var sample = samples[(x + 1) + SampleGridSize * (z + 1)];
-                range.Add((int)math.floor(sample.Height), sample.WaterLevel);
+                var h = (int)math.floor(sample.Height);
+                range.Add(h, sample.WaterLevel);
+                range.AddVegetation(PlantHeights(p, sample, h));
             }
 
             return range;
         }
 
+        // The heights a column's ground plants may take, from its biome's tallest plant.
+        public static int2 PlantHeights(in TerrainParams p, in TerrainSample sample, int h)
+        {
+            var biomes = p.Vegetation.Biomes;
+            var biome = sample.Biome.Value;
+            if (biome >= biomes.Length || biomes[biome].PlantCount == 0)
+            {
+                return new int2(int.MaxValue, int.MinValue);
+            }
+
+            // A margin for stems bending in from a neighbor standing a few voxels higher.
+            return new int2(h, h + biomes[biome].MaxPlantHeight + BendMargin);
+        }
+
+        // A chunk generated outside the streaming jobs: its column's tree parts are always
+        // collected in Burst (VegetationCollectJob), as the streaming does (R-21).
         public static void FillChunk(
             in TerrainParams p,
             ChunkCoord coord,
@@ -399,14 +461,18 @@ namespace Revoxel.World
         {
             var samples = new NativeArray<TerrainSample>(SampleGridCount, Allocator.Temp);
             ComputeSamples(p, Coords.ChunkOrigin(coord).xz, samples);
-            FillFromSamples(p, coord, samples, dense);
+            var parts = VegetationCollectJob.Collect(p, Coords.ColumnOf(coord), out _);
+            FillFromSamples(p, coord, samples, parts.AsArray(), dense);
+            parts.Dispose();
             samples.Dispose();
         }
 
+        // Terrain, water, ground plants and the column's tree parts.
         public static void FillFromSamples(
             in TerrainParams p,
             ChunkCoord coord,
             NativeArray<TerrainSample> samples,
+            NativeArray<TreePart> parts,
             NativeArray<ushort> dense
         )
         {
@@ -439,6 +505,135 @@ namespace Revoxel.World
                     dense[Coords.LocalIndex(x, y, z)] = id;
                 }
             }
+
+            FillPlants(p, origin, samples, dense);
+            Vegetation.Rasterize(p, parts, origin, samples, false, dense);
+        }
+
+        // Ground plants (D-087, D-089) of the chunk's columns and of the one-column border
+        // around them, whose stems may bend into the chunk. Every chunk decides a column's
+        // plant the same way, so a bent blade crosses chunk borders whole.
+        private static void FillPlants(
+            in TerrainParams p,
+            int3 origin,
+            NativeArray<TerrainSample> samples,
+            NativeArray<ushort> dense
+        )
+        {
+            const int size = WorldConstants.ChunkSize;
+            if (p.Vegetation.MaxPlantHeight == 0)
+            {
+                return;
+            }
+
+            var plants = new NativeArray<int4>(SampleGridCount, Allocator.Temp);
+            var ids = new NativeArray<int>(SampleGridCount, Allocator.Temp);
+            var any = false;
+            for (var z = -1; z <= size; z++)
+            for (var x = -1; x <= size; x++)
+            {
+                var i = (x + 1) + SampleGridSize * (z + 1);
+                var sample = samples[i];
+                var h = (int)math.floor(sample.Height);
+                var range = PlantHeights(p, sample, h);
+                if (range.x >= range.y || range.y <= origin.y || h >= origin.y + size + 1)
+                {
+                    continue;
+                }
+
+                var inside = x >= 0 && x < size && z >= 0 && z < size;
+                var slope = inside
+                    ? Slope(
+                        samples[i + 1].Height,
+                        samples[i - 1].Height,
+                        samples[i + SampleGridSize].Height,
+                        samples[i - SampleGridSize].Height
+                    )
+                    : float.NaN;
+                var height = Vegetation.PlantAt(
+                    p,
+                    sample,
+                    origin.x + x,
+                    origin.z + z,
+                    slope,
+                    out var stem,
+                    out var head,
+                    out var bend,
+                    out var bendAt
+                );
+                if (height > 0)
+                {
+                    plants[i] = new int4(h, height, bend, bendAt);
+                    ids[i] = stem | (head << 16);
+                    any = true;
+                }
+            }
+
+            if (any)
+            {
+                for (var z = 0; z < size; z++)
+                for (var x = 0; x < size; x++)
+                {
+                    var i = (x + 1) + SampleGridSize * (z + 1);
+                    var ground = (int)math.floor(samples[i].Height);
+                    var own = plants[i];
+                    if (own.y > 0)
+                    {
+                        var top = own.z != Vegetation.BendNone ? own.x + own.w : own.x + own.y;
+                        WriteStem(origin, x, z, own.x, top, own.x + own.y, ids[i], ground, dense);
+                    }
+
+                    // Stems bending in from the four face neighbors.
+                    for (var d = 1; d <= 4; d++)
+                    {
+                        var from = new int2(x, z) - Vegetation.BendOffset(d);
+                        var j = (from.x + 1) + SampleGridSize * (from.y + 1);
+                        var other = plants[j];
+                        if (other.y > 0 && other.z == d)
+                        {
+                            WriteStem(
+                                origin,
+                                x,
+                                z,
+                                other.x + other.w - 1,
+                                other.x + other.y,
+                                other.x + other.y,
+                                ids[j],
+                                ground,
+                                dense
+                            );
+                        }
+                    }
+                }
+            }
+
+            ids.Dispose();
+            plants.Dispose();
+        }
+
+        // Stem voxels from y0 to y1 (exclusive) of a column, the head at the plant's top,
+        // only at or above the column's ground and inside the chunk.
+        private static void WriteStem(
+            int3 origin,
+            int x,
+            int z,
+            int y0,
+            int y1,
+            int plantTop,
+            int ids,
+            int ground,
+            NativeArray<ushort> dense
+        )
+        {
+            var stem = (ushort)(ids & 0xFFFF);
+            var head = (ushort)(ids >> 16);
+            var lo = math.max(math.max(y0, ground), origin.y);
+            var hi = math.min(y1, origin.y + WorldConstants.ChunkSize);
+            for (var wy = lo; wy < hi; wy++)
+            {
+                dense[Coords.LocalIndex(x, wy - origin.y, z)] =
+                    wy == plantTop - 1 && head != 0 ? head : stem;
+            }
         }
 
         // Coarse levels (D-055 to D-057, PLAN-03 Task 2). A level-L chunk is 32^3 coarse
@@ -467,6 +662,7 @@ namespace Revoxel.World
                 range.Add((int)math.floor(sample.Height), sample.WaterLevel);
             }
 
+            range.AddVegetation(Vegetation.DetailHeights(p, cell, level));
             return range.WidenedHeights(s);
         }
 
@@ -485,6 +681,11 @@ namespace Revoxel.World
             var s = 1 << level;
             var yMin = cy * WorldConstants.ChunkSize * s;
             var yMax = yMin + WorldConstants.ChunkSize * s - 1;
+            if (range.VegetationOverlaps(yMin, yMax))
+            {
+                return true;
+            }
+
             if (yMin >= math.max(range.Height.y, range.Water.y))
             {
                 return false;
@@ -579,9 +780,11 @@ namespace Revoxel.World
                     padded[Coords.PaddedIndex(x, y, z)] = id;
                 }
             }
+
+            Vegetation.FillDetail(p, level, origin, sideWalls, samples, padded);
         }
 
-        private static float FineSlope(in TerrainParams p, int x, int z) =>
+        public static float FineSlope(in TerrainParams p, int x, int z) =>
             Slope(
                 SmoothHeight(p, x + 1, z),
                 SmoothHeight(p, x - 1, z),

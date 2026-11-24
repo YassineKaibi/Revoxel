@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3516755eb49b4432b6a21c31b9d31b32, type: 3}
+  m_Name: Species_Oak
+  m_EditorClassIdentifier: Revoxel.World::Revoxel.World.TreeSpecies
+  _form: 0
+  _heightMeters: {x: 3, y: 18}
+  _trunkRadiusMeters: {x: 0.08, y: 0.55}
+  _lean: 0.1
+  _wander: 0.06
+  _crownBase: 0.3
+  _crownRadius: {x: 0.3, y: 0.45}
+  _leader: 0.35
+  _attractors: 320
+  _stepMeters: 0.4
+  _influenceMeters: 2.6
+  _killMeters: 0.9
+  _tropism: 0.15
+  _maxNodes: 600
+  _pipeExponent: 2.3
+  _whorlSpacingMeters: 0.6
+  _branchesPerWhorl: 5
+  _branchDroop: 0.35
+  _fronds: 9
+  _frondLengthMeters: 2.6
+  _rootFlare: 0.7
+  _flareHeightMeters: 0.6
+  _propRoots: 0
+  _propRootReachMeters: 1.5
+  _leafRadiusMeters: {x: 0.8, y: 1.3}
+  _leafPorosity: 0.25
+  _bark: {fileID: 11400000, guid: 2e18b1844f8a44a68227bb0d989d6951, type: 2}
+  _wood: {fileID: 11400000, guid: 7c2853e70f8db85c88c5bf2d1d7c36b9, type: 2}
+  _leaves: {fileID: 11400000, guid: b51e74abea74a9b53aef9996ddf381f9, type: 2}
+  _maxSlope: 0.5
+  _minTemperatureC: 0
+  _maxWaterDepthMeters: 0
+  _growsOnShore: 0
+  _spacingMeters: 6

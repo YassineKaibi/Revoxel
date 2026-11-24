@@ -44,3 +44,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 9b4274c8e8b947c8a3ed323e459c242e, type: 2}
   - {fileID: 11400000, guid: 6be918618be244bdaade9031f2ba29bf, type: 2}
   _reefRock: {fileID: 11400000, guid: db3a185f802e4a5494552689c6ec1de8, type: 2}
+  _treeCover: 0
+  _trees: []
+  _treeWeights: []
+  _plants: []

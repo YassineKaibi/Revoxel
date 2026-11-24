@@ -71,7 +71,10 @@ namespace Revoxel.Tests.PlayMode
             Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
         }
 
+        // Two full settles plus a walk: past the test framework's default 180 s on the dev
+        // laptop, which is slower than the mid-range gaming PC D-052 targets (D-090, R-30).
         [UnityTest]
+        [Timeout(600000)]
         public IEnumerator Detail_FocusWalk_NoHolesNoOverlaps()
         {
             DistanceDetail detail = null;
