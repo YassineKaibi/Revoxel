@@ -16,5 +16,5 @@ MonoBehaviour:
   _ringHalfWidthCells: 8
   _wallDepthVoxels: 8
   _maxJobsInFlight: 16
-  _mainThreadBudgetMs: 1
+  _mainThreadBudgetMs: 2
   _meshMemoryBudgetMiB: 384

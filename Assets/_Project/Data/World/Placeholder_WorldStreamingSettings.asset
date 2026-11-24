@@ -17,5 +17,5 @@ MonoBehaviour:
   _colliderRadiusChunks: 2
   _maxGenerationJobsInFlight: 32
   _maxMeshJobsInFlight: 32
-  _mainThreadBudgetMs: 2
+  _mainThreadBudgetMs: 4
   _voxelMemoryBudgetMiB: 300
