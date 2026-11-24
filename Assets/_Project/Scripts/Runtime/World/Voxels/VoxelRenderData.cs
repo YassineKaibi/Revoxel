@@ -11,5 +11,8 @@ namespace Revoxel.World
 
         // Liquid voxels go to the water submesh and get faces only toward Air (D-073).
         public bool IsLiquid;
+
+        // Blocks, filters or passes sky light (SkyClass, D-097).
+        public byte SkyClass;
     }
 }

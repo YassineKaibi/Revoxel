@@ -8,6 +8,9 @@
 // The pattern fades out as a pixel covers a good part of its scale (distant and coarse
 // chunks, PLAN-03 Task 5), so far materials read as their average color, not as noise.
 // While the main camera is in water the view fogs toward the underwater color (D-073).
+// Each vertex also carries its sky light (TEXCOORD1, D-097), which scales the ambient light
+// and keeps direct light out of caves; clouds shade the direct light (D-099); the seasons
+// tint foliage, wet ground darkens and snow covers top faces where the air is cold (D-101).
 Shader "Revoxel/Voxel"
 {
     Properties
@@ -43,6 +46,7 @@ Shader "Revoxel/Voxel"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/AmbientOcclusion.hlsl"
+            #include "RevoxelAtmosphere.hlsl"
 
             TEXTURE2D(_RevoxelMaterialTable);
             float _RevoxelMaterialTableWidth;
@@ -52,12 +56,28 @@ Shader "Revoxel/Voxel"
             float _RevoxelUnderwater;
             float4 _RevoxelUnderwaterColor;
             float _RevoxelUnderwaterDensity;
+            float4 _RevoxelSkyLight;
+            TEXTURE2D(_RevoxelClimateMap);
+            SAMPLER(sampler_RevoxelClimateMap);
+            float4 _RevoxelClimate;
+            float4 _RevoxelClimateOrigin;
+            float4 _RevoxelSeason;
+            float4 _RevoxelWeather;
+            float4 _RevoxelSpringLeaf;
+            float4 _RevoxelAutumnLeafA;
+            float4 _RevoxelAutumnLeafB;
+            float4 _RevoxelAutumnLeafC;
+            float4 _RevoxelWinterLeaf;
+            float4 _RevoxelDryGrass;
+            float4 _RevoxelWinterGrass;
+            float4 _RevoxelSnowColor;
 
             struct Attributes
             {
                 float4 positionOS : POSITION;
                 float3 normalOS : NORMAL;
                 float2 materialAo : TEXCOORD0;
+                float skyLight : TEXCOORD1;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -68,6 +88,7 @@ Shader "Revoxel/Voxel"
                 float3 normalWS : TEXCOORD1;
                 float2 materialAo : TEXCOORD2;
                 half fogFactor : TEXCOORD3;
+                float skyLight : TEXCOORD4;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -84,6 +105,7 @@ Shader "Revoxel/Voxel"
                 output.positionWS = position.positionWS;
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);
                 output.materialAo = input.materialAo;
+                output.skyLight = input.skyLight;
                 output.fogFactor = ComputeFogFactor(position.positionCS.z);
                 return output;
             }
@@ -134,6 +156,56 @@ Shader "Revoxel/Voxel"
                 return pattern == 3 ? smoothstep(0.4, 0.6, n) : n;
             }
 
+            // Foliage colors by season (D-101): 1 deciduous, 2 evergreen, 3 grass.
+            half3 SeasonTint(int foliage, half3 albedo, float3 positionWS)
+            {
+                float spring = _RevoxelSeason.x;
+                float autumn = _RevoxelSeason.y;
+                float winter = _RevoxelSeason.z;
+                float dry = _RevoxelSeason.w;
+                half luminance = dot(albedo, half3(0.2126, 0.7152, 0.0722));
+                if (foliage == 1)
+                {
+                    float n = ValueNoise(positionWS * 0.2);
+                    half3 fall = lerp(_RevoxelAutumnLeafA.rgb, _RevoxelAutumnLeafB.rgb, smoothstep(0.3, 0.5, n));
+                    fall = lerp(fall, _RevoxelAutumnLeafC.rgb, smoothstep(0.6, 0.8, n));
+                    fall *= 0.6 + 0.8 * ValueNoise(positionWS * 1.3);
+                    albedo = lerp(albedo, saturate(albedo * _RevoxelSpringLeaf.rgb), spring);
+                    albedo = lerp(albedo, fall, autumn * smoothstep(0.15, 0.4, autumn + n * 0.3));
+                    albedo = lerp(albedo, _RevoxelWinterLeaf.rgb * (0.8 + luminance), winter);
+                }
+                else if (foliage == 2)
+                {
+                    albedo *= 1.0 - 0.18 * winter;
+                }
+                else if (foliage == 3)
+                {
+                    half3 dried = _RevoxelDryGrass.rgb * (0.7 + 0.6 * ValueNoise(positionWS * 0.5));
+                    albedo = lerp(albedo, dried, dry * 0.75 + autumn * 0.3);
+                    albedo = lerp(albedo, _RevoxelWinterGrass.rgb, winter * 0.7);
+                    albedo = lerp(albedo, saturate(albedo * _RevoxelSpringLeaf.rgb), spring * 0.6);
+                }
+
+                return albedo;
+            }
+
+            // Snow on top faces where the air is cold (D-101), 0 to 1.
+            float SnowCover(float3 positionWS, float3 normalWS, float sky)
+            {
+                if (_RevoxelClimate.w < 0.5 || normalWS.y < 0.5)
+                {
+                    return 0.0;
+                }
+
+                float2 uv = (positionWS.xz - _RevoxelClimateOrigin.xy) * _RevoxelClimate.z;
+                float sea = SAMPLE_TEXTURE2D_LOD(_RevoxelClimateMap, sampler_RevoxelClimateMap, uv, 0).r;
+                float air = sea - _RevoxelClimate.y * max(0.0, positionWS.y - _RevoxelClimate.x) + _RevoxelWeather.y;
+                air += (ValueNoise(positionWS * 0.6) - 0.5) * 2.0;
+                float start = _RevoxelWeather.z;
+                float full = _RevoxelWeather.w;
+                return saturate((start - air) / max(start - full, 0.01)) * smoothstep(0.55, 0.85, sky);
+            }
+
             half4 Frag(Varyings input) : SV_Target
             {
                 UNITY_SETUP_INSTANCE_ID(input);
@@ -154,16 +226,24 @@ Shader "Revoxel/Voxel"
                 contrast *= 1.0 - smoothstep(0.25, 0.75, footprint / max(scale, 0.01));
 
                 half3 albedo = lerp(baseColor, secondary, Pattern(pattern, input.positionWS, scale) * contrast);
+                float4 season = LOAD_TEXTURE2D(_RevoxelMaterialTable, int2(id, 3));
+                int foliage = (int)round(season.r * 3.0);
+                float sky = saturate(input.skyLight);
+                float3 normalWS = normalize(input.normalWS);
+                albedo = SeasonTint(foliage, albedo, input.positionWS);
+                float wet = _RevoxelWeather.x * smoothstep(0.6, 0.95, sky) * (foliage == 0 ? 1.0 : 0.5);
+                albedo *= 1.0 - 0.35 * wet;
+                albedo = lerp(albedo, _RevoxelSnowColor.rgb, SnowCover(input.positionWS, normalWS, sky));
                 half luminance = dot(albedo, half3(0.2126, 0.7152, 0.0722));
                 albedo = lerp(albedo, luminance * _RevoxelCorruptionTint.rgb, _RevoxelCorruption);
                 half occlusion = lerp(_RevoxelAoMin, 1.0, saturate(input.materialAo.y));
 
-                float3 normalWS = normalize(input.normalWS);
                 float4 shadowCoord = TransformWorldToShadowCoord(input.positionWS);
                 Light mainLight = GetMainLight(shadowCoord);
                 half ndotl = saturate(dot(normalWS, mainLight.direction));
                 half3 direct = mainLight.color * (ndotl * mainLight.shadowAttenuation * mainLight.distanceAttenuation);
-                half3 ambient = SampleSH(normalWS);
+                direct *= saturate(sky * 4.0) * RevoxelCloudShadow(input.positionWS, mainLight.direction);
+                half3 ambient = SampleSH(normalWS) * lerp(_RevoxelSkyLight.x, 1.0, pow(sky, max(_RevoxelSkyLight.y, 0.01)));
 
                 #if defined(_SCREEN_SPACE_OCCLUSION)
                     float2 screenUV = GetNormalizedScreenSpaceUV(input.positionCS);

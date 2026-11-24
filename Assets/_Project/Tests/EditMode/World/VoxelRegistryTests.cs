@@ -94,7 +94,7 @@ namespace Revoxel.Tests.EditMode
             _created.Add(table);
 
             Assert.That(table.width, Is.EqualTo(8));
-            Assert.That(table.height, Is.EqualTo(3));
+            Assert.That(table.height, Is.EqualTo(VoxelRegistry.MaterialTableRows));
             Assert.That(table.format, Is.EqualTo(TextureFormat.RGBA32));
             Assert.That(table.filterMode, Is.EqualTo(FilterMode.Point));
             Assert.That(table.wrapMode, Is.EqualTo(TextureWrapMode.Clamp));
@@ -107,6 +107,10 @@ namespace Revoxel.Tests.EditMode
             Assert.That(data.g, Is.EqualTo((byte)Mathf.Round(0.5f / 8f * 255f)));
             Assert.That(data.b, Is.EqualTo((byte)Mathf.Round(0.2f * 255f)));
             Assert.That(data.a, Is.EqualTo(255));
+
+            // Season row (D-101): no foliage, no sky filter on these two.
+            var season = (Color32)table.GetPixel(7, VoxelRegistry.SeasonRow);
+            Assert.That((season.r, season.g), Is.EqualTo(((byte)0, (byte)0)));
         }
 
         [Test]

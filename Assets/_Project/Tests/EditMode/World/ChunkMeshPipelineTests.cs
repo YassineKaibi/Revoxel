@@ -15,7 +15,11 @@ namespace Revoxel.Tests.EditMode
             // Writable mesh data may live 4 frames; results must not wait longer even when
             // the budget is spent every frame.
             var host = new GameObject("ChunkMeshPipelineTests");
-            var pipeline = new ChunkMeshPipeline(WorldAssets.LoadRegistry(), 4);
+            var pipeline = new ChunkMeshPipeline(
+                WorldAssets.LoadRegistry(),
+                4,
+                WorldAssets.LoadRenderSettings().SkyLightCanopy
+            );
             var views = new ChunkViewPool(host.transform, null);
             var air = ChunkVoxels.CreateUniform(VoxelId.Air, Allocator.Persistent);
             var chunks = new List<Chunk>();

@@ -1,3 +1,4 @@
+using Revoxel.Atmosphere;
 using Revoxel.World;
 using UnityEngine;
 using UnityEngine.Localization;
@@ -10,8 +11,8 @@ namespace Revoxel.UI
     // world counters (frame time, loaded chunks, chunk views, pending jobs, voxel memory;
     // D-045, D-046, D-054) and the distance detail counters (distant chunks, distant mesh
     // memory; PLAN-03 Task 5), the biome under the camera (D-065) and the water the camera
-    // is in, with its depth (D-074). IMGUI on purpose, so the UI framework choice stays
-    // open.
+    // is in, with its depth (D-074), and the time, season, weather and air temperature
+    // (D-102). IMGUI on purpose, so the UI framework choice stays open.
     public sealed class DebugOverlay : MonoBehaviour
     {
         public const string TableName = "UI";
@@ -26,6 +27,31 @@ namespace Revoxel.UI
         public const string DetailMemoryKey = "ui.debug.detail_memory";
         public const string BiomeKey = "ui.debug.biome";
         public const string WaterKey = "ui.debug.water";
+        public const string TimeKey = "ui.debug.time";
+        public const string SeasonKey = "ui.debug.season";
+        public const string WeatherKey = "ui.debug.weather";
+        public const string TemperatureKey = "ui.debug.temperature";
+
+        // Indexed by AtmosphereClock season.
+        public static readonly string[] SeasonKeys =
+        {
+            "season.spring.name",
+            "season.summer.name",
+            "season.autumn.name",
+            "season.winter.name",
+        };
+
+        // Indexed by WeatherKind, then snow.
+        public static readonly string[] WeatherKeys =
+        {
+            "weather.clear.name",
+            "weather.cloudy.name",
+            "weather.overcast.name",
+            "weather.rain.name",
+            "weather.storm.name",
+            "weather.fog.name",
+            "weather.snow.name",
+        };
 
         // Names of the water bodies, indexed by WaterBody.
         public static readonly string[] WaterBodyKeys =
@@ -78,7 +104,23 @@ namespace Revoxel.UI
         private LocalizedString _waterText = new LocalizedString(TableName, WaterKey);
 
         [SerializeField]
+        private LocalizedString _timeText = new LocalizedString(TableName, TimeKey);
+
+        [SerializeField]
+        private LocalizedString _seasonText = new LocalizedString(TableName, SeasonKey);
+
+        [SerializeField]
+        private LocalizedString _weatherText = new LocalizedString(TableName, WeatherKey);
+
+        [SerializeField]
+        private LocalizedString _temperatureText = new LocalizedString(TableName, TemperatureKey);
+
+        [SerializeField]
         private VoxelWorld _world;
+
+        [SerializeField]
+        [Tooltip("Found in the scene when empty.")]
+        private AtmosphereController _atmosphere;
 
         [SerializeField]
         private DistanceDetail _detail;
@@ -95,6 +137,12 @@ namespace Revoxel.UI
         private int _biomeNameId = -1;
         private string _waterLabel = string.Empty;
         private readonly string[] _waterBodyNames = new string[3];
+        private string _timeLabel = string.Empty;
+        private string _seasonLabel = string.Empty;
+        private string _weatherLabel = string.Empty;
+        private string _temperatureLabel = string.Empty;
+        private readonly string[] _seasonNames = new string[4];
+        private readonly string[] _weatherNames = new string[7];
         private float _smoothedFrameTime;
         private float _nextCountersRefresh;
 #endif
@@ -133,7 +181,15 @@ namespace Revoxel.UI
             _detailMemoryText.StringChanged += OnDetailMemoryChanged;
             _biomeText.StringChanged += OnBiomeChanged;
             _waterText.StringChanged += OnWaterChanged;
+            _timeText.StringChanged += OnTimeChanged;
+            _seasonText.StringChanged += OnSeasonChanged;
+            _weatherText.StringChanged += OnWeatherChanged;
+            _temperatureText.StringChanged += OnTemperatureChanged;
             LocalizationSettings.SelectedLocaleChanged += OnLocaleChanged;
+            if (_atmosphere == null)
+            {
+                _atmosphere = FindAnyObjectByType<AtmosphereController>();
+            }
 #endif
         }
 
@@ -151,6 +207,10 @@ namespace Revoxel.UI
             _detailMemoryText.StringChanged -= OnDetailMemoryChanged;
             _biomeText.StringChanged -= OnBiomeChanged;
             _waterText.StringChanged -= OnWaterChanged;
+            _timeText.StringChanged -= OnTimeChanged;
+            _seasonText.StringChanged -= OnSeasonChanged;
+            _weatherText.StringChanged -= OnWeatherChanged;
+            _temperatureText.StringChanged -= OnTemperatureChanged;
             LocalizationSettings.SelectedLocaleChanged -= OnLocaleChanged;
 #endif
         }
@@ -178,6 +238,41 @@ namespace Revoxel.UI
 
         private void OnWaterChanged(string value) => _waterLabel = value;
 
+        private void OnTimeChanged(string value) => _timeLabel = value;
+
+        private void OnSeasonChanged(string value) => _seasonLabel = value;
+
+        private void OnWeatherChanged(string value) => _weatherLabel = value;
+
+        private void OnTemperatureChanged(string value) => _temperatureLabel = value;
+
+        private static string Lookup(string[] cache, string[] keys, int index)
+        {
+            return cache[index] ??= LocalizationSettings.StringDatabase.GetLocalizedString(
+                TableName,
+                keys[index]
+            );
+        }
+
+        // Day and time, season, weather and air temperature at the camera (D-102).
+        private string AtmosphereText()
+        {
+            if (_atmosphere == null || !_atmosphere.isActiveAndEnabled)
+            {
+                return string.Empty;
+            }
+
+            var hour = _atmosphere.HourOfDay;
+            var h = (int)hour;
+            var m = (int)((hour - h) * 60f);
+            var weather = _atmosphere.Weather;
+            var weatherIndex = _atmosphere.IsSnowing ? WeatherKeys.Length - 1 : (int)weather.Kind;
+            return $"\n{_timeLabel}: {_atmosphere.DayIndex + 1}, {h:00}:{m:00}\n"
+                + $"{_seasonLabel}: {Lookup(_seasonNames, SeasonKeys, _atmosphere.Season)}\n"
+                + $"{_weatherLabel}: {Lookup(_weatherNames, WeatherKeys, weatherIndex)}\n"
+                + $"{_temperatureLabel}: {_atmosphere.CameraAirTemperatureC:F1} °C";
+        }
+
         // Biome and water names are looked up again in the new language.
         private void OnLocaleChanged(Locale locale)
         {
@@ -186,6 +281,9 @@ namespace Revoxel.UI
             {
                 _waterBodyNames[i] = null;
             }
+
+            System.Array.Clear(_seasonNames, 0, _seasonNames.Length);
+            System.Array.Clear(_weatherNames, 0, _weatherNames.Length);
         }
 
         // The water the camera is in and its depth, or nothing when dry.
@@ -258,7 +356,8 @@ namespace Revoxel.UI
                 + $"{_detailChunksLabel}: {detail.Views}\n"
                 + $"{_detailMemoryLabel}: {detail.MeshBytes / BytesPerMiB:F1} MiB\n"
                 + $"{_biomeLabel}: {BiomeName()}\n"
-                + $"{_waterLabel}: {WaterText()}";
+                + $"{_waterLabel}: {WaterText()}"
+                + AtmosphereText();
         }
 #endif
 

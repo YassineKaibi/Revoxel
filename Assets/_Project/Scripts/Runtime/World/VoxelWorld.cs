@@ -105,6 +105,10 @@ namespace Revoxel.World
         private TerrainParams _params;
         private bool[] _opaque;
         private bool[] _liquid;
+
+        // Sky classes by voxel id (D-097): managed for edits, native for the tops jobs.
+        private byte[] _skyClass;
+        private NativeArray<byte> _skyClasses;
         private TerrainParams _queryParams;
         private bool _hasQueryParams;
         private bool _ownsParams;
@@ -119,6 +123,7 @@ namespace Revoxel.World
         private GenSlot[] _genSlots;
         private NativeArray<EntityId> _bakeIds;
         private Texture2D _materialTable;
+        private Texture2D _climateMap;
         private ChunkVoxels _air;
         private bool _streaming;
         private int2 _focusColumn;
@@ -175,6 +180,8 @@ namespace Revoxel.World
         public WorldBounds Bounds => _bounds;
 
         public VoxelRegistry Registry => _activeRegistry;
+
+        public int Seed => _seed;
 
         public WorldStreamingSettings StreamingSettings => _streamingSettings;
 
@@ -274,10 +281,12 @@ namespace Revoxel.World
             _activeRegistry = registry;
             _bounds = bounds;
             _liquid = new bool[WorldConstants.MaxVoxelTypes];
+            _skyClass = new byte[WorldConstants.MaxVoxelTypes];
             using var renderData = registry.CreateRenderData(Allocator.Temp);
             for (var i = 0; i < renderData.Length; i++)
             {
                 _liquid[i] = renderData[i].IsLiquid;
+                _skyClass[i] = renderData[i].SkyClass;
             }
         }
 
@@ -296,6 +305,35 @@ namespace Revoxel.World
             }
 
             AddChunk(column, coord, voxels);
+            for (var lz = 0; lz < WorldConstants.ChunkSize; lz++)
+            for (var lx = 0; lx < WorldConstants.ChunkSize; lx++)
+            {
+                ScanSky(column, lx, lz, out var any, out var full);
+                var i = SkyLight.ColumnIndex(lx, lz);
+                column.SkyAny[i] = any;
+                column.SkyFull[i] = full;
+            }
+        }
+
+        // The sky heights of a loaded voxel column, in voxels (D-097): above its highest
+        // voxel that blocks or filters sky light, and above its highest blocker; 0 for none.
+        public bool TryGetSkyHeights(int x, int z, out int any, out int full)
+        {
+            var column = new int2(x >> WorldConstants.ChunkShift, z >> WorldConstants.ChunkShift);
+            if (!_columns.TryGetValue(column, out var c) || c.Stage != ColumnStage.Loaded)
+            {
+                any = 0;
+                full = 0;
+                return false;
+            }
+
+            var i = SkyLight.ColumnIndex(
+                x & WorldConstants.ChunkMask,
+                z & WorldConstants.ChunkMask
+            );
+            any = c.SkyAny[i];
+            full = c.SkyFull[i];
+            return true;
         }
 
         public bool TryGetChunk(ChunkCoord coord, out Chunk chunk) =>
@@ -327,6 +365,20 @@ namespace Revoxel.World
 
             var voxel = Coords.WorldPositionToVoxel(positionMeters);
             sample = BiomeMap.Sample(QueryParams(), voxel.x, voxel.z);
+            return true;
+        }
+
+        // Air temperature at a position from the biome climate and the altitude, °C
+        // (BiomeMap.TemperatureAt; weather, seasons and day are added by the atmosphere).
+        public bool TryGetClimateTemperature(float3 positionMeters, out float celsius)
+        {
+            if (_terrainSettings == null || _terrainSettings.Biomes == null)
+            {
+                celsius = 0f;
+                return false;
+            }
+
+            celsius = BiomeMap.TemperatureAt(QueryParams(), positionMeters);
             return true;
         }
 
@@ -473,6 +525,7 @@ namespace Revoxel.World
             chunk.Voxels.Set(index, id);
             TrackStorageChange(chunk, memory, wasUniform);
             MarkDirtyAround(chunk, local, local);
+            UpdateSky(voxel, voxel);
             VoxelsChanged?.Invoke(voxel, voxel);
             return true;
         }
@@ -547,6 +600,7 @@ namespace Revoxel.World
 
             if (count > 0)
             {
+                UpdateSky(changedMin, changedMax);
                 VoxelsChanged?.Invoke(changedMin, changedMax);
             }
 
@@ -563,6 +617,18 @@ namespace Revoxel.World
             foreach (var column in _columns.Values)
             {
                 column.DisposePending();
+                column.DisposeSky();
+            }
+
+            foreach (var column in _columnPool)
+            {
+                column.DisposeSky();
+            }
+
+            _columnPool.Clear();
+            if (_skyClasses.IsCreated)
+            {
+                _skyClasses.Dispose();
             }
 
             foreach (var chunk in _chunks.Values)
@@ -587,6 +653,12 @@ namespace Revoxel.World
             {
                 DestroyUnityObject(_materialTable);
                 _materialTable = null;
+            }
+
+            if (_climateMap != null)
+            {
+                DestroyUnityObject(_climateMap);
+                _climateMap = null;
             }
 
             if (_underwater)
@@ -745,6 +817,16 @@ namespace Revoxel.World
             _ownsParams = true;
             DisposeQueryParams();
             _streaming = true;
+            using (var temperatures = ClimateMap.Sample(_params, Allocator.TempJob))
+            {
+                _climateMap = ClimateMap.CreateTexture(temperatures);
+            }
+
+            VoxelShaderGlobals.SetClimateMap(
+                _climateMap,
+                _params.SeaLevel * WorldConstants.VoxelSize,
+                _params.LapseRateCPerVoxel * WorldConstants.VoxelsPerMeter
+            );
             IsWaterPlanReady = true;
             WaterPlanReady?.Invoke();
         }
@@ -790,7 +872,12 @@ namespace Revoxel.World
             _materialTable = _registry.CreateMaterialTable();
             VoxelShaderGlobals.SetMaterialTable(_materialTable);
             VoxelShaderGlobals.SetDefaults(_renderSettings);
-            _pipeline = new ChunkMeshPipeline(_registry, _streamingSettings.MaxMeshJobsInFlight);
+            _pipeline = new ChunkMeshPipeline(
+                _registry,
+                _streamingSettings.MaxMeshJobsInFlight,
+                _renderSettings.SkyLightCanopy
+            );
+            _skyClasses = _registry.CreateSkyClasses(Allocator.Persistent);
             Materials = new[] { _material, _waterMaterial };
             _views = new ChunkViewPool(transform, Materials);
             _air = ChunkVoxels.CreateUniform(VoxelId.Air, Allocator.Persistent);
@@ -812,6 +899,8 @@ namespace Revoxel.World
                         NativeArrayOptions.UninitializedMemory
                     ),
                     Result = new NativeReference<ChunkVoxels>(Allocator.Persistent),
+                    TopAny = new NativeArray<byte>(SkyLight.ColumnCells, Allocator.Persistent),
+                    TopFull = new NativeArray<byte>(SkyLight.ColumnCells, Allocator.Persistent),
                 };
             }
 
@@ -917,6 +1006,7 @@ namespace Revoxel.World
                 var column = slot.Column;
                 slot.Column = null;
                 column.Pending[slot.Cy] = slot.Result.Value;
+                column.AddSkyTops(slot.Cy, slot.TopAny, slot.TopFull);
                 column.MixedInFlight--;
                 TryFinishColumn(column);
             }
@@ -944,7 +1034,13 @@ namespace Revoxel.World
             for (var cy = 0; cy < WorldConstants.ChunksY; cy++)
             {
                 var coord = new ChunkCoord(column.Coord.x, cy, column.Coord.y);
-                AddChunk(column, coord, column.Pending[cy]);
+                ref var pending = ref column.Pending[cy];
+                if (pending.IsUniform)
+                {
+                    column.AddUniformSky(cy, _skyClass[pending.UniformId.Value]);
+                }
+
+                AddChunk(column, coord, pending);
                 column.Pending[cy] = default;
             }
 
@@ -1119,7 +1215,7 @@ namespace Revoxel.World
                 slot.Cy = cy;
                 _genBusy++;
                 column.MixedInFlight++;
-                slot.Handle = new ChunkGenJob
+                var generate = new ChunkGenJob
                 {
                     Params = _params,
                     Coord = new ChunkCoord(column.Coord.x, cy, column.Coord.y),
@@ -1129,6 +1225,14 @@ namespace Revoxel.World
                     Scratch = slot.Scratch,
                     Result = slot.Result,
                 }.Schedule();
+                slot.Handle = new SkyTopsJob
+                {
+                    Voxels = slot.Result,
+                    Dense = slot.Scratch,
+                    SkyClasses = _skyClasses,
+                    TopAny = slot.TopAny,
+                    TopFull = slot.TopFull,
+                }.Schedule(generate);
                 return;
             }
         }
@@ -1442,6 +1546,160 @@ namespace Revoxel.World
                     ? neighbor.Voxels
                     : _air;
             }
+
+            var sky = _pipeline.SkyColumns;
+            var center = chunk.Column.Coord;
+            for (var dz = -1; dz <= 1; dz++)
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                var start = ((dx + 1) + 3 * (dz + 1)) * 2 * SkyLight.ColumnCells;
+                if (
+                    _columns.TryGetValue(center + new int2(dx, dz), out var c)
+                    && c.Stage == ColumnStage.Loaded
+                )
+                {
+                    NativeArray<ushort>.Copy(c.SkyAny, 0, sky, start, SkyLight.ColumnCells);
+                    NativeArray<ushort>.Copy(
+                        c.SkyFull,
+                        0,
+                        sky,
+                        start + SkyLight.ColumnCells,
+                        SkyLight.ColumnCells
+                    );
+                }
+                else
+                {
+                    for (var i = 0; i < 2 * SkyLight.ColumnCells; i++)
+                    {
+                        sky[start + i] = 0;
+                    }
+                }
+            }
+        }
+
+        // The sky heights of one voxel column from its loaded chunks, top down (D-097).
+        private void ScanSky(StreamColumn column, int lx, int lz, out ushort any, out ushort full)
+        {
+            any = 0;
+            full = 0;
+            for (var cy = WorldConstants.ChunksY - 1; cy >= 0; cy--)
+            {
+                var chunk = column.Chunks[cy];
+                if (chunk == null)
+                {
+                    continue;
+                }
+
+                ref var voxels = ref chunk.Voxels;
+                var baseY = cy * WorldConstants.ChunkSize;
+                if (voxels.IsUniform)
+                {
+                    var c = _skyClass[voxels.UniformId.Value];
+                    if (c == SkyClass.Pass)
+                    {
+                        continue;
+                    }
+
+                    var top = (ushort)(baseY + WorldConstants.ChunkSize);
+                    any = any == 0 ? top : any;
+                    if (c == SkyClass.Block)
+                    {
+                        full = top;
+                        return;
+                    }
+
+                    continue;
+                }
+
+                for (var y = WorldConstants.ChunkMask; y >= 0; y--)
+                {
+                    var c = _skyClass[voxels.Get(Coords.LocalIndex(lx, y, lz)).Value];
+                    if (c == SkyClass.Pass)
+                    {
+                        continue;
+                    }
+
+                    any = any == 0 ? (ushort)(baseY + y + 1) : any;
+                    if (c == SkyClass.Block)
+                    {
+                        full = (ushort)(baseY + y + 1);
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Rescans the sky heights of the voxel columns of an edited box (world voxels) and
+        // marks dirty, not urgent, the chunks within reach whose light may have changed:
+        // those between the old and new heights in the 3 x 3 columns around (D-097).
+        private void UpdateSky(int3 min, int3 max)
+        {
+            var lo = int.MaxValue;
+            var hi = int.MinValue;
+            for (var z = min.z; z <= max.z; z++)
+            for (var x = min.x; x <= max.x; x++)
+            {
+                var coord = new int2(
+                    x >> WorldConstants.ChunkShift,
+                    z >> WorldConstants.ChunkShift
+                );
+                if (
+                    !_columns.TryGetValue(coord, out var column)
+                    || column.Stage != ColumnStage.Loaded
+                )
+                {
+                    continue;
+                }
+
+                var lx = x & WorldConstants.ChunkMask;
+                var lz = z & WorldConstants.ChunkMask;
+                var i = SkyLight.ColumnIndex(lx, lz);
+                int oldAny = column.SkyAny[i];
+                int oldFull = column.SkyFull[i];
+                ScanSky(column, lx, lz, out var newAny, out var newFull);
+                int any = newAny;
+                int full = newFull;
+                if (any == oldAny && full == oldFull)
+                {
+                    continue;
+                }
+
+                column.SkyAny[i] = newAny;
+                column.SkyFull[i] = newFull;
+                lo = math.min(lo, math.min(math.min(oldAny, any), math.min(oldFull, full)));
+                hi = math.max(hi, math.max(math.max(oldAny, any), math.max(oldFull, full)));
+            }
+
+            if (lo > hi)
+            {
+                return;
+            }
+
+            const int reach = SkyLight.Reach + 1;
+            var columnMin = new int2(min.x - reach, min.z - reach) >> WorldConstants.ChunkShift;
+            var columnMax = new int2(max.x + reach, max.z + reach) >> WorldConstants.ChunkShift;
+            var cyMin = math.max(0, (lo - 1) >> WorldConstants.ChunkShift);
+            var cyMax = math.min(WorldConstants.ChunksY - 1, hi >> WorldConstants.ChunkShift);
+            for (var cz = columnMin.y; cz <= columnMax.y; cz++)
+            for (var cx = columnMin.x; cx <= columnMax.x; cx++)
+            {
+                if (
+                    !_columns.TryGetValue(new int2(cx, cz), out var column)
+                    || column.Stage != ColumnStage.Loaded
+                )
+                {
+                    continue;
+                }
+
+                for (var cy = cyMin; cy <= cyMax; cy++)
+                {
+                    var chunk = column.Chunks[cy];
+                    if (chunk != null && !chunk.IsUniformAir)
+                    {
+                        MarkDirty(chunk, false);
+                    }
+                }
+            }
         }
 
         private StreamColumn RentColumn(int2 coord, ColumnStage stage)
@@ -1623,6 +1881,12 @@ namespace Revoxel.World
                     {
                         slot.Result.Dispose();
                     }
+
+                    if (slot.TopAny.IsCreated)
+                    {
+                        slot.TopAny.Dispose();
+                        slot.TopFull.Dispose();
+                    }
                 }
 
                 _genSlots = null;
@@ -1654,6 +1918,8 @@ namespace Revoxel.World
         {
             public NativeArray<ushort> Scratch;
             public NativeReference<ChunkVoxels> Result;
+            public NativeArray<byte> TopAny;
+            public NativeArray<byte> TopFull;
             public JobHandle Handle;
             public StreamColumn Column;
             public int Cy;

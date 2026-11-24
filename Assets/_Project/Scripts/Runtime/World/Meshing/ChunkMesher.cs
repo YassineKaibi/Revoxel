@@ -17,7 +17,7 @@ namespace Revoxel.World
 
         public static NativeArray<VertexAttributeDescriptor> CreateRenderLayout(Allocator allocator)
         {
-            var layout = new NativeArray<VertexAttributeDescriptor>(3, allocator);
+            var layout = new NativeArray<VertexAttributeDescriptor>(4, allocator);
             layout[0] = new VertexAttributeDescriptor(
                 VertexAttribute.Position,
                 VertexAttributeFormat.Float32,
@@ -32,6 +32,11 @@ namespace Revoxel.World
                 VertexAttribute.TexCoord0,
                 VertexAttributeFormat.Float32,
                 2
+            );
+            layout[3] = new VertexAttributeDescriptor(
+                VertexAttribute.TexCoord1,
+                VertexAttributeFormat.Float32,
+                1
             );
             return layout;
         }

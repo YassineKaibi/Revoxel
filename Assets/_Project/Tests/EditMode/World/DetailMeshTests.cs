@@ -252,9 +252,11 @@ namespace Revoxel.Tests.EditMode
         {
             using var renderLayout = ChunkMesher.CreateRenderLayout(Allocator.TempJob);
             using var collisionLayout = ChunkMesher.CreateCollisionLayout(Allocator.TempJob);
+            using var light = SkyLight.CreateFullLight(Allocator.TempJob);
             new GreedyMeshJob
             {
                 Padded = padded,
+                SkyLight = light,
                 RenderData = _renderData,
                 RenderLayout = renderLayout,
                 CollisionLayout = collisionLayout,

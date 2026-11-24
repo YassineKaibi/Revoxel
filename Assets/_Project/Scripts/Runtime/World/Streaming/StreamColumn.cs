@@ -39,6 +39,12 @@ namespace Revoxel.World
         // Drawn (under DistanceDetail; always true in effect otherwise).
         public bool Shown;
 
+        // Sky heights per voxel column, in voxels (D-097): above the highest voxel that
+        // blocks or filters sky light, and above the highest that blocks it; 0 for none.
+        // Indexed by SkyLight.ColumnIndex. Kept by the column object across reuse.
+        public NativeArray<ushort> SkyAny;
+        public NativeArray<ushort> SkyFull;
+
         public bool HasJobsInFlight => HeightSlot >= 0 || MixedInFlight > 0;
 
         public void Reset(int2 coord, ColumnStage stage)
@@ -50,6 +56,20 @@ namespace Revoxel.World
             Shown = false;
             MixedQueue.Clear();
             Dirty.Clear();
+            if (!SkyAny.IsCreated)
+            {
+                SkyAny = new NativeArray<ushort>(SkyLight.ColumnCells, Allocator.Persistent);
+                SkyFull = new NativeArray<ushort>(SkyLight.ColumnCells, Allocator.Persistent);
+            }
+            else
+            {
+                for (var i = 0; i < SkyLight.ColumnCells; i++)
+                {
+                    SkyAny[i] = 0;
+                    SkyFull[i] = 0;
+                }
+            }
+
             for (var i = 0; i < Chunks.Length; i++)
             {
                 Chunks[i] = null;
@@ -65,6 +85,55 @@ namespace Revoxel.World
             }
 
             Parts = default;
+        }
+
+        // Raises the sky heights by a chunk's tops (SkyLight.ChunkTops) at chunk height cy.
+        public void AddSkyTops(int cy, NativeArray<byte> topAny, NativeArray<byte> topFull)
+        {
+            var baseY = cy * WorldConstants.ChunkSize;
+            for (var i = 0; i < SkyLight.ColumnCells; i++)
+            {
+                if (topAny[i] > 0)
+                {
+                    SkyAny[i] = (ushort)System.Math.Max(SkyAny[i], baseY + topAny[i]);
+                }
+
+                if (topFull[i] > 0)
+                {
+                    SkyFull[i] = (ushort)System.Math.Max(SkyFull[i], baseY + topFull[i]);
+                }
+            }
+        }
+
+        // Raises every sky height to the top of a uniform chunk that blocks or filters.
+        public void AddUniformSky(int cy, byte skyClass)
+        {
+            if (skyClass == SkyClass.Pass)
+            {
+                return;
+            }
+
+            var top = (ushort)((cy + 1) * WorldConstants.ChunkSize);
+            for (var i = 0; i < SkyLight.ColumnCells; i++)
+            {
+                SkyAny[i] = (ushort)System.Math.Max(SkyAny[i], top);
+                if (skyClass == SkyClass.Block)
+                {
+                    SkyFull[i] = (ushort)System.Math.Max(SkyFull[i], top);
+                }
+            }
+        }
+
+        public void DisposeSky()
+        {
+            if (SkyAny.IsCreated)
+            {
+                SkyAny.Dispose();
+                SkyFull.Dispose();
+            }
+
+            SkyAny = default;
+            SkyFull = default;
         }
 
         // Frees generated voxels that were never inserted, and the tree parts.

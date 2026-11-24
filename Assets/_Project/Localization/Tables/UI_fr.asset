@@ -110,6 +110,66 @@ MonoBehaviour:
     m_Localized: "Rivi\xE8re"
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947500
+    m_Localized: Heure
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947501
+    m_Localized: Saison
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947502
+    m_Localized: "M\xE9t\xE9o"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947503
+    m_Localized: "Temp\xE9rature"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947504
+    m_Localized: Printemps
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947505
+    m_Localized: "\xC9t\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947506
+    m_Localized: Automne
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947507
+    m_Localized: Hiver
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947508
+    m_Localized: "D\xE9gag\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947509
+    m_Localized: Nuageux
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947510
+    m_Localized: Couvert
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947511
+    m_Localized: Pluie
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947512
+    m_Localized: Orage
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947513
+    m_Localized: Brouillard
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947514
+    m_Localized: Neige
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []

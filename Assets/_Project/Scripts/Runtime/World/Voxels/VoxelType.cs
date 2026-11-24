@@ -50,6 +50,14 @@ namespace Revoxel.World
         [Range(0f, 1f)]
         private float _patternContrast;
 
+        [SerializeField]
+        [Tooltip("Leaves: solid and opaque, but they let part of the sky light through (D-097).")]
+        private bool _filtersSkyLight;
+
+        [SerializeField]
+        [Tooltip("How the seasons color this voxel type in the shader (D-101).")]
+        private VoxelFoliage _foliage;
+
         public VoxelId Id => new VoxelId(_id);
 
         public string NameKey => _nameKey;
@@ -70,6 +78,16 @@ namespace Revoxel.World
 
         public float PatternContrast => _patternContrast;
 
+        public bool FiltersSkyLight => _filtersSkyLight;
+
+        public VoxelFoliage Foliage => _foliage;
+
+        // Blocks, filters or passes sky light (D-097).
+        public byte SkyLightClass =>
+            !_isSolid || !_isOpaque ? SkyClass.Pass
+            : _filtersSkyLight ? SkyClass.Filter
+            : SkyClass.Block;
+
         internal void Configure(
             ushort id,
             string nameKey,
@@ -80,7 +98,9 @@ namespace Revoxel.World
             SurfacePattern pattern,
             float patternScale,
             float patternContrast,
-            bool isLiquid = false
+            bool isLiquid = false,
+            bool filtersSkyLight = false,
+            VoxelFoliage foliage = VoxelFoliage.None
         )
         {
             _id = id;
@@ -93,6 +113,8 @@ namespace Revoxel.World
             _patternScale = patternScale;
             _patternContrast = patternContrast;
             _isLiquid = isLiquid;
+            _filtersSkyLight = filtersSkyLight;
+            _foliage = foliage;
         }
     }
 }

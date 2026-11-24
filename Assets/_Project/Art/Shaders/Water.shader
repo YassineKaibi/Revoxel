@@ -48,6 +48,7 @@ Shader "Revoxel/Water"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
+            #include "RevoxelAtmosphere.hlsl"
 
             float _RevoxelCorruption;
             float4 _RevoxelWaterScatter;
@@ -202,6 +203,7 @@ Shader "Revoxel/Water"
                 float4 shadowCoord = TransformWorldToShadowCoord(input.positionWS);
                 Light mainLight = GetMainLight(shadowCoord);
                 half shadow = mainLight.shadowAttenuation * mainLight.distanceAttenuation;
+                shadow *= RevoxelCloudShadow(input.positionWS, mainLight.direction);
                 half3 ambient = SampleSH(half3(0.0, 1.0, 0.0));
                 half3 lit = mainLight.color * (shadow * saturate(mainLight.direction.y * 0.5 + 0.5)) + ambient;
 
@@ -210,7 +212,7 @@ Shader "Revoxel/Water"
 
                 // Sky and sun on the surface.
                 half3 reflected = reflect(-viewDir, normal);
-                half3 sky = max(GlossyEnvironmentReflection(reflected, 1.0 - smoothness, 1.0), SampleSH(reflected));
+                half3 sky = RevoxelSkyRadiance(reflected, GetCameraPositionWS(), false);
                 half3 halfDir = normalize(mainLight.direction + viewDir);
                 half specular = pow(saturate(dot(normal, halfDir)), lerp(16.0, 1024.0, smoothness)) * 4.0;
                 half fresnel = 0.02 + 0.98 * pow(1.0 - saturate(dot(normal, viewDir)), 5.0);

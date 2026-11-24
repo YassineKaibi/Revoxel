@@ -110,6 +110,66 @@ MonoBehaviour:
     m_Localized: River
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947500
+    m_Localized: Time
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947501
+    m_Localized: Season
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947502
+    m_Localized: Weather
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947503
+    m_Localized: Temperature
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947504
+    m_Localized: Spring
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947505
+    m_Localized: Summer
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947506
+    m_Localized: Autumn
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947507
+    m_Localized: Winter
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947508
+    m_Localized: Clear
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947509
+    m_Localized: Cloudy
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947510
+    m_Localized: Overcast
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947511
+    m_Localized: Rain
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947512
+    m_Localized: Storm
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947513
+    m_Localized: Fog
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947514
+    m_Localized: Snow
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []

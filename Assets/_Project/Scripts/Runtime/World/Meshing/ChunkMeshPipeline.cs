@@ -10,8 +10,9 @@ using UnityEngine.Rendering;
 namespace Revoxel.World
 {
     // Meshes chunks in jobs: the caller fills Neighborhood with the chunk and its 26
-    // neighbors, Schedule pads them on the main thread (Burst, Run) into a slot's own
-    // buffer and schedules a GreedyMeshJob; ApplyFinished applies finished results to the
+    // neighbors and SkyColumns with the sky heights of its 3 x 3 columns, Schedule pads
+    // them on the main thread (Burst, Run) into a slot's own buffers and schedules a
+    // SkyLightJob and a GreedyMeshJob after it (D-097); ApplyFinished applies finished results to the
     // chunk views. Slots and their buffers are reused, so meshing allocates no managed
     // memory once warm.
     internal sealed class ChunkMeshPipeline : IDisposable
@@ -28,9 +29,16 @@ namespace Revoxel.World
         private NativeArray<VertexAttributeDescriptor> _renderLayout;
         private NativeArray<VertexAttributeDescriptor> _collisionLayout;
         private NativeArray<ChunkVoxels> _neighborhood;
+        private NativeArray<ushort> _skyColumns;
+        private readonly int _canopy;
 
-        public ChunkMeshPipeline(VoxelRegistry registry, int capacity)
+        public ChunkMeshPipeline(VoxelRegistry registry, int capacity, float canopyLight)
         {
+            _canopy = (int)math.round(math.saturate(canopyLight) * SkyLight.Full);
+            _skyColumns = new NativeArray<ushort>(
+                9 * 2 * SkyLight.ColumnCells,
+                Allocator.Persistent
+            );
             _renderData = registry.CreateRenderData(Allocator.Persistent);
             _renderLayout = ChunkMesher.CreateRenderLayout(Allocator.Persistent);
             _collisionLayout = ChunkMesher.CreateCollisionLayout(Allocator.Persistent);
@@ -43,6 +51,10 @@ namespace Revoxel.World
 
         // Index (dx + 1) + 3 * ((dz + 1) + 3 * (dy + 1)); read by the pad job in Schedule.
         public NativeArray<ChunkVoxels> Neighborhood => _neighborhood;
+
+        // Column (dx + 1) + 3 * (dz + 1): SkyLight.ColumnCells any heights, then as many
+        // full heights; zeros for a column outside the island. Read by Schedule.
+        public NativeArray<ushort> SkyColumns => _skyColumns;
 
         public int Busy { get; private set; }
 
@@ -83,7 +95,25 @@ namespace Revoxel.World
                 );
             }
 
+            if (!slot.Light.IsCreated)
+            {
+                slot.Light = new NativeArray<byte>(
+                    WorldConstants.PaddedVoxels,
+                    Allocator.Persistent,
+                    NativeArrayOptions.UninitializedMemory
+                );
+                slot.PatchAny = new NativeArray<int>(SkyLight.PatchCells, Allocator.Persistent);
+                slot.PatchFull = new NativeArray<int>(SkyLight.PatchCells, Allocator.Persistent);
+            }
+
             new ChunkPadJob { Neighborhood = _neighborhood, Padded = slot.Padded }.Run();
+            new SkyPatchJob
+            {
+                Columns = _skyColumns,
+                OriginY = Coords.ChunkOrigin(chunk.Coord).y,
+                PatchAny = slot.PatchAny,
+                PatchFull = slot.PatchFull,
+            }.Run();
             slot.Data = Mesh.AllocateWritableMeshData(2);
             slot.HasData = true;
             slot.Chunk = chunk;
@@ -92,15 +122,23 @@ namespace Revoxel.World
             slot.ScheduledFrame = frame;
             slot.Busy = true;
             Busy++;
+            var light = new SkyLightJob
+            {
+                PatchAny = slot.PatchAny,
+                PatchFull = slot.PatchFull,
+                Canopy = _canopy,
+                Light = slot.Light,
+            }.Schedule();
             slot.Handle = new GreedyMeshJob
             {
                 Padded = slot.Padded,
+                SkyLight = slot.Light,
                 RenderData = _renderData,
                 RenderLayout = _renderLayout,
                 CollisionLayout = _collisionLayout,
                 RenderMesh = slot.Data[0],
                 CollisionMesh = slot.Data[1],
-            }.Schedule();
+            }.Schedule(light);
         }
 
         // Applies finished results until the budget runs out, at least one per call. Urgent
@@ -162,6 +200,13 @@ namespace Revoxel.World
                     slot.Padded.Dispose();
                 }
 
+                if (slot.Light.IsCreated)
+                {
+                    slot.Light.Dispose();
+                    slot.PatchAny.Dispose();
+                    slot.PatchFull.Dispose();
+                }
+
                 slot.Busy = false;
                 slot.Chunk = null;
             }
@@ -172,6 +217,7 @@ namespace Revoxel.World
             DisposeIfCreated(ref _renderLayout);
             DisposeIfCreated(ref _collisionLayout);
             DisposeIfCreated(ref _neighborhood);
+            DisposeIfCreated(ref _skyColumns);
         }
 
         private void Finish(Slot slot, ChunkViewPool views, List<Chunk> applied)
@@ -243,6 +289,9 @@ namespace Revoxel.World
         private sealed class Slot
         {
             public NativeArray<ushort> Padded;
+            public NativeArray<byte> Light;
+            public NativeArray<int> PatchAny;
+            public NativeArray<int> PatchFull;
             public Mesh.MeshDataArray Data;
             public bool HasData;
             public JobHandle Handle;

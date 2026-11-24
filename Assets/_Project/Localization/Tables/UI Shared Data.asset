@@ -107,6 +107,66 @@ MonoBehaviour:
     m_Key: water.river.name
     m_Metadata:
       m_Items: []
+  - m_Id: 456720325947500
+    m_Key: ui.debug.time
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947501
+    m_Key: ui.debug.season
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947502
+    m_Key: ui.debug.weather
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947503
+    m_Key: ui.debug.temperature
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947504
+    m_Key: season.spring.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947505
+    m_Key: season.summer.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947506
+    m_Key: season.autumn.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947507
+    m_Key: season.winter.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947508
+    m_Key: weather.clear.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947509
+    m_Key: weather.cloudy.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947510
+    m_Key: weather.overcast.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947511
+    m_Key: weather.rain.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947512
+    m_Key: weather.storm.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947513
+    m_Key: weather.fog.name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 456720325947514
+    m_Key: weather.snow.name
+    m_Metadata:
+      m_Items: []
   m_Metadata:
     m_Items: []
   m_KeyGenerator:

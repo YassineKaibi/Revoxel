@@ -13,20 +13,26 @@ namespace Revoxel.World
     // faces with the same voxel id and the same four corner occlusion values are merged
     // greedily into rectangles; collision faces merge by solidity only. Occlusion comes
     // from the layer in front of the face, so it appears only at concave corners; liquid
-    // faces have none. The render mesh has two submeshes: 0 every other face, 1 liquid
-    // faces (the water material).
+    // faces have none. Each corner also carries the mean sky light of the non-opaque voxels
+    // in front of it (D-097), in 16 steps, and merges only with equal light. The render
+    // mesh has two submeshes: 0 every other face, 1 liquid faces (the water material).
     [BurstCompile]
     public struct GreedyMeshJob : IJob
     {
         private const int Size = WorldConstants.ChunkSize;
         private const int IdBits = 10;
-        private const uint IdMask = (1u << IdBits) - 1u;
+        private const ulong IdMask = (1ul << IdBits) - 1ul;
+        private const int LightBits = IdBits + 8;
 
         [ReadOnly]
         public NativeArray<ushort> Padded;
 
         [ReadOnly]
         public NativeArray<VoxelRenderData> RenderData;
+
+        // Sky light per padded voxel, 0 to 255 (SkyLightJob, or SkyLight.CreateFullLight).
+        [ReadOnly]
+        public NativeArray<byte> SkyLight;
 
         [ReadOnly]
         public NativeArray<VertexAttributeDescriptor> RenderLayout;
@@ -54,8 +60,8 @@ namespace Revoxel.World
             var liquidIndices = new NativeList<int>(256, Allocator.Temp);
             var collisionVertices = new NativeList<float3>(1024, Allocator.Temp);
             var collisionIndices = new NativeList<int>(1536, Allocator.Temp);
-            var renderMask = new NativeArray<uint>(Size * Size, Allocator.Temp);
-            var collisionMask = new NativeArray<uint>(Size * Size, Allocator.Temp);
+            var renderMask = new NativeArray<ulong>(Size * Size, Allocator.Temp);
+            var collisionMask = new NativeArray<ulong>(Size * Size, Allocator.Temp);
 
             for (var axis = 0; axis < 3; axis++)
             {
@@ -106,8 +112,8 @@ namespace Revoxel.World
             int v,
             int sign,
             int d,
-            NativeArray<uint> renderMask,
-            NativeArray<uint> collisionMask
+            NativeArray<ulong> renderMask,
+            NativeArray<ulong> collisionMask
         )
         {
             var normal = int3.zero;
@@ -128,17 +134,18 @@ namespace Revoxel.World
                 var b = At(front);
                 var cell = i + Size * j;
 
-                collisionMask[cell] = Solid(a) && !Solid(b) ? 1u : 0u;
+                collisionMask[cell] = Solid(a) && !Solid(b) ? 1ul : 0ul;
                 if (a == 0 || Opaque(b) || a == b)
                 {
-                    renderMask[cell] = 0u;
+                    renderMask[cell] = 0ul;
                     continue;
                 }
 
                 if (Liquid(a))
                 {
                     var side = axis != 1 && (front[axis] < 0 || front[axis] >= Size);
-                    renderMask[cell] = b == 0 && !(SkipLiquidSides && side) ? a | Unoccluded : 0u;
+                    renderMask[cell] =
+                        b == 0 && !(SkipLiquidSides && side) ? a | Unoccluded | FullLight : 0ul;
                     continue;
                 }
 
@@ -147,18 +154,57 @@ namespace Revoxel.World
                 var ao1 = Occlusion(front, du, -dv);
                 var ao2 = Occlusion(front, du, dv);
                 var ao3 = Occlusion(front, -du, dv);
+                var l0 = CornerLight(front, -du, -dv);
+                var l1 = CornerLight(front, du, -dv);
+                var l2 = CornerLight(front, du, dv);
+                var l3 = CornerLight(front, -du, dv);
                 renderMask[cell] =
                     a
-                    | (ao0 << IdBits)
-                    | (ao1 << (IdBits + 2))
-                    | (ao2 << (IdBits + 4))
-                    | (ao3 << (IdBits + 6));
+                    | ((ulong)ao0 << IdBits)
+                    | ((ulong)ao1 << (IdBits + 2))
+                    | ((ulong)ao2 << (IdBits + 4))
+                    | ((ulong)ao3 << (IdBits + 6))
+                    | (l0 << LightBits)
+                    | (l1 << (LightBits + 4))
+                    | (l2 << (LightBits + 8))
+                    | (l3 << (LightBits + 12));
             }
         }
 
         // Every corner open (3): liquid faces merge by id alone.
-        private const uint Unoccluded =
-            (3u << IdBits) | (3u << (IdBits + 2)) | (3u << (IdBits + 4)) | (3u << (IdBits + 6));
+        private const ulong Unoccluded =
+            (3ul << IdBits) | (3ul << (IdBits + 2)) | (3ul << (IdBits + 4)) | (3ul << (IdBits + 6));
+
+        // Every corner fully lit.
+        private const ulong FullLight = 0xFFFFul << LightBits;
+
+        // Mean sky light of the front voxel and its non-opaque neighbors around a corner,
+        // 0 to 15.
+        private ulong CornerLight(int3 front, int3 sideU, int3 sideV)
+        {
+            var sum = (int)Light(front);
+            var count = 1;
+            AddLight(front + sideU, ref sum, ref count);
+            AddLight(front + sideV, ref sum, ref count);
+            AddLight(front + sideU + sideV, ref sum, ref count);
+            var mean = (sum + count / 2) / count;
+            return (ulong)(
+                (mean * World.SkyLight.Steps + World.SkyLight.Full / 2) / World.SkyLight.Full
+            );
+        }
+
+        private void AddLight(int3 p, ref int sum, ref int count)
+        {
+            if (Opaque(At(p)))
+            {
+                return;
+            }
+
+            sum += Light(p);
+            count++;
+        }
+
+        private byte Light(int3 p) => SkyLight[Coords.PaddedIndex(p.x, p.y, p.z)];
 
         // 3 is open, 0 fully occluded (both sides opaque).
         private uint Occlusion(int3 front, int3 sideU, int3 sideV)
@@ -175,7 +221,7 @@ namespace Revoxel.World
             int v,
             int sign,
             int d,
-            NativeArray<uint> mask,
+            NativeArray<ulong> mask,
             ref NativeList<VoxelVertex> vertices,
             ref NativeList<int> indices,
             ref NativeList<int> liquidIndices
@@ -187,7 +233,7 @@ namespace Revoxel.World
             for (var i = 0; i < Size; )
             {
                 var key = mask[i + Size * j];
-                if (key == 0u)
+                if (key == 0ul)
                 {
                     i++;
                     continue;
@@ -200,7 +246,14 @@ namespace Revoxel.World
                     (key >> (IdBits + 4)) & 3u,
                     (key >> (IdBits + 6)) & 3u
                 );
-                var id = key & IdMask;
+                var light =
+                    new float4(
+                        (key >> LightBits) & 15ul,
+                        (key >> (LightBits + 4)) & 15ul,
+                        (key >> (LightBits + 8)) & 15ul,
+                        (key >> (LightBits + 12)) & 15ul
+                    ) / World.SkyLight.Steps;
+                var id = (uint)(key & IdMask);
                 var start = vertices.Length;
                 for (var c = 0; c < 4; c++)
                 {
@@ -210,6 +263,7 @@ namespace Revoxel.World
                             Position = Corner(axis, u, v, sign, d, i, j, w, h, c),
                             Normal = normal,
                             MaterialAo = new float2(id, ao[c] / 3f),
+                            SkyLight = light[c],
                         }
                     );
                 }
@@ -233,7 +287,7 @@ namespace Revoxel.World
             int v,
             int sign,
             int d,
-            NativeArray<uint> mask,
+            NativeArray<ulong> mask,
             ref NativeList<float3> vertices,
             ref NativeList<int> indices
         )
@@ -241,13 +295,13 @@ namespace Revoxel.World
             for (var j = 0; j < Size; j++)
             for (var i = 0; i < Size; )
             {
-                if (mask[i + Size * j] == 0u)
+                if (mask[i + Size * j] == 0ul)
                 {
                     i++;
                     continue;
                 }
 
-                Grow(mask, 1u, i, j, out var w, out var h);
+                Grow(mask, 1ul, i, j, out var w, out var h);
                 var start = vertices.Length;
                 for (var c = 0; c < 4; c++)
                 {
@@ -262,8 +316,8 @@ namespace Revoxel.World
         // Widest run of key along u from (i, j), then as many full rows along v as match.
         // Clears the merged cells.
         private static void Grow(
-            NativeArray<uint> mask,
-            uint key,
+            NativeArray<ulong> mask,
+            ulong key,
             int i,
             int j,
             out int w,
@@ -301,7 +355,7 @@ namespace Revoxel.World
             for (var y = 0; y < h; y++)
             for (var x = 0; x < w; x++)
             {
-                mask[i + x + Size * (j + y)] = 0u;
+                mask[i + x + Size * (j + y)] = 0ul;
             }
         }
 

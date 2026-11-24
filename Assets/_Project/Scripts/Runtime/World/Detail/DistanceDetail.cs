@@ -78,6 +78,9 @@ namespace Revoxel.World
         private NativeArray<VoxelRenderData> _renderData;
         private NativeArray<VertexAttributeDescriptor> _renderLayout;
         private NativeArray<VertexAttributeDescriptor> _collisionLayout;
+
+        // Coarse chunks are fully sky lit (D-097).
+        private NativeArray<byte> _fullLight;
         private Mesh _scratchCollision;
         private TerrainParams _params;
         private bool _running;
@@ -251,6 +254,7 @@ namespace Revoxel.World
             _renderData = _world.Registry.CreateRenderData(Allocator.Persistent);
             _renderLayout = ChunkMesher.CreateRenderLayout(Allocator.Persistent);
             _collisionLayout = ChunkMesher.CreateCollisionLayout(Allocator.Persistent);
+            _fullLight = SkyLight.CreateFullLight(Allocator.Persistent);
             _scratchCollision = new Mesh { name = "DetailScratchCollision" };
             _views = new DetailViewPool(transform, _world.Materials);
             var slots = _settings.MaxJobsInFlight;
@@ -540,6 +544,7 @@ namespace Revoxel.World
                 {
                     Padded = slot.Padded,
                     RenderData = _renderData,
+                    SkyLight = _fullLight,
                     RenderLayout = _renderLayout,
                     CollisionLayout = _collisionLayout,
                     RenderMesh = slot.Data[0],
@@ -1066,6 +1071,11 @@ namespace Revoxel.World
             if (_renderLayout.IsCreated)
             {
                 _renderLayout.Dispose();
+            }
+
+            if (_fullLight.IsCreated)
+            {
+                _fullLight.Dispose();
             }
 
             if (_collisionLayout.IsCreated)

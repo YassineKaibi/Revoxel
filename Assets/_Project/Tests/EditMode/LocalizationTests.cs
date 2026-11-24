@@ -71,7 +71,14 @@ namespace Revoxel.Tests.EditMode
                 Revoxel.UI.DebugOverlay.DetailChunksKey,
                 Revoxel.UI.DebugOverlay.DetailMemoryKey,
                 Revoxel.UI.DebugOverlay.BiomeKey,
+                Revoxel.UI.DebugOverlay.TimeKey,
+                Revoxel.UI.DebugOverlay.SeasonKey,
+                Revoxel.UI.DebugOverlay.WeatherKey,
+                Revoxel.UI.DebugOverlay.TemperatureKey,
             };
+            keys = keys.Concat(Revoxel.UI.DebugOverlay.SeasonKeys)
+                .Concat(Revoxel.UI.DebugOverlay.WeatherKeys)
+                .ToArray();
 
             foreach (var key in keys)
             {

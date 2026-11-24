@@ -22,6 +22,23 @@ namespace Revoxel.World
         [Range(0f, 1f)]
         private float _aoMin = 0.55f;
 
+        [Header("Sky light (D-097)")]
+        [SerializeField]
+        [Tooltip("Sky light under leaves only (filters), 0 to 1." + Placeholder)]
+        [Range(0f, 1f)]
+        private float _skyLightCanopy = 0.45f;
+
+        [SerializeField]
+        [Tooltip(
+            "Share of the ambient light left where no sky light reaches, 0 to 1." + Placeholder
+        )]
+        [Range(0f, 1f)]
+        private float _skyLightFloor = 0.03f;
+
+        [SerializeField]
+        [Tooltip("Exponent of the sky light before it scales the ambient light." + Placeholder)]
+        private float _skyLightCurve = 1.6f;
+
         [Header("Water (D-073)")]
         [SerializeField]
         [Tooltip("sRGB color light scatters to inside clean water." + Placeholder)]
@@ -92,6 +109,12 @@ namespace Revoxel.World
 
         public float AoMin => _aoMin;
 
+        public float SkyLightCanopy => _skyLightCanopy;
+
+        public float SkyLightFloor => _skyLightFloor;
+
+        public float SkyLightCurve => _skyLightCurve;
+
         public Color WaterScatter => _waterScatter;
 
         public Vector3 WaterAbsorptionPerMeter => _waterAbsorptionPerMeter;
@@ -127,6 +150,18 @@ namespace Revoxel.World
             if (_aoMin < 0f || _aoMin > 1f)
             {
                 error = "AO floor must be 0 to 1.";
+                return false;
+            }
+
+            if (
+                _skyLightCanopy < 0f
+                || _skyLightCanopy > 1f
+                || _skyLightFloor < 0f
+                || _skyLightFloor > 1f
+                || _skyLightCurve <= 0f
+            )
+            {
+                error = "Sky light canopy and floor must be 0 to 1, the curve positive.";
                 return false;
             }
 

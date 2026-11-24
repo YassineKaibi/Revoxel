@@ -22,3 +22,5 @@ MonoBehaviour:
   _pattern: 1
   _patternScale: 0.3
   _patternContrast: 0.3
+  _filtersSkyLight: 0
+  _foliage: 3

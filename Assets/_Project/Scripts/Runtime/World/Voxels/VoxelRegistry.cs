@@ -12,7 +12,12 @@ namespace Revoxel.World
         public const int BaseColorRow = 0;
         public const int SecondaryColorRow = 1;
         public const int PatternRow = 2;
-        public const int MaterialTableRows = 3;
+
+        // (foliage kind / 3, filters sky light, 0, 1) (D-101).
+        public const int SeasonRow = 3;
+        public const int MaterialTableRows = 4;
+
+        private const float MaxFoliageValue = (float)VoxelFoliage.Grass;
 
         // The pattern scale is stored as scale / MaxPatternScale in one byte.
         public const float MaxPatternScale = 8f;
@@ -109,6 +114,7 @@ namespace Revoxel.World
                         IsSolid = type.IsSolid,
                         IsOpaque = type.IsOpaque,
                         IsLiquid = type.IsLiquid,
+                        SkyClass = type.SkyLightClass,
                     };
                 }
             }
@@ -116,8 +122,24 @@ namespace Revoxel.World
             return data;
         }
 
-        // Width highest id + 1, three rows: base color and secondary color (linear), then
-        // (pattern / 3, scale / 8, contrast, 1). The caller owns the texture.
+        // The sky class of every possible id (D-097); unregistered ids pass light.
+        public NativeArray<byte> CreateSkyClasses(Allocator allocator)
+        {
+            var classes = new NativeArray<byte>(WorldConstants.MaxVoxelTypes, allocator);
+            foreach (var type in _types)
+            {
+                if (type != null && type.Id.Value < WorldConstants.MaxVoxelTypes)
+                {
+                    classes[type.Id.Value] = type.SkyLightClass;
+                }
+            }
+
+            return classes;
+        }
+
+        // Width highest id + 1, four rows: base color and secondary color (linear), then
+        // (pattern / 3, scale / 8, contrast, 1), then (foliage / 3, filters sky light, 0, 1).
+        // The caller owns the texture.
         public Texture2D CreateMaterialTable()
         {
             var width = 1;
@@ -156,6 +178,12 @@ namespace Revoxel.World
                     (float)type.Pattern / MaxPatternValue,
                     Mathf.Clamp01(type.PatternScale / MaxPatternScale),
                     Mathf.Clamp01(type.PatternContrast),
+                    1f
+                );
+                pixels[SeasonRow * width + x] = new Color(
+                    (float)type.Foliage / MaxFoliageValue,
+                    type.FiltersSkyLight ? 1f : 0f,
+                    0f,
                     1f
                 );
             }

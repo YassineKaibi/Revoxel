@@ -235,6 +235,41 @@ namespace Revoxel.Tests.EditMode
             Assert.That(_world.TrySampleWater(new float3(100f, baseY, 100f), out _), Is.False);
         }
 
+        [Test]
+        public void SkyLight_HeightsFollowEdits()
+        {
+            // Stone up to y 63 in column (0, 0), Air above to y 95.
+            Insert(Stone, new int3(0, 0, 0), new int3(0, 1, 0));
+            Insert(VoxelId.Air, new int3(0, 2, 0));
+            var leaves = UnityEditor
+                .AssetDatabase.LoadAssetAtPath<VoxelType>(
+                    $"{WorldAssets.VoxelsFolder}/Voxel_Leaves.asset"
+                )
+                .Id;
+
+            AssertSky(64, 64);
+            Assert.That(_world.TrySetVoxel(new int3(5, 63, 5), VoxelId.Air), Is.True);
+            AssertSky(63, 63);
+            Assert.That(_world.TrySetVoxel(new int3(5, 70, 5), leaves), Is.True);
+            AssertSky(71, 63);
+            Assert.That(_world.TrySetVoxel(new int3(5, 80, 5), Plank), Is.True);
+            AssertSky(81, 81);
+            _world.CarveSphere(
+                new float3(5.5f, 80.5f, 5.5f) * WorldConstants.VoxelSize,
+                0.2f,
+                VoxelId.Air
+            );
+            AssertSky(71, 63);
+            Assert.That(_world.TryGetSkyHeights(6, 5, out var any, out var full), Is.True);
+            Assert.That((any, full), Is.EqualTo((64, 64)), "the neighbor column is unchanged");
+        }
+
+        private void AssertSky(int any, int full)
+        {
+            Assert.That(_world.TryGetSkyHeights(5, 5, out var a, out var f), Is.True);
+            Assert.That((a, f), Is.EqualTo((any, full)));
+        }
+
         // Inserts uniform chunks for every chunk coordinate from min to max (inclusive)
         // that is inside the island.
         private void Insert(VoxelId id, int3 min, int3? max = null)

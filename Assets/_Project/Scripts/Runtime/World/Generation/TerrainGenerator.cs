@@ -819,6 +819,20 @@ namespace Revoxel.World
             public float Waste;
         }
 
+        // Air temperature at sea level of a column, °C: noise plus a north (cold) to south
+        // (warm) gradient. The climate map samples it (D-101).
+        public static float SeaTemperatureC(in TerrainParams p, int x, int z) =>
+            SeaTemperatureAt(p, new float2(x + 0.5f, z + 0.5f));
+
+        private static float SeaTemperatureAt(in TerrainParams p, float2 pos)
+        {
+            var t =
+                (1f - p.TemperatureGradient)
+                    * noise.snoise(pos * p.TemperatureFrequency + p.TemperatureOffset)
+                + p.TemperatureGradient * math.clamp(-pos.y / p.EdgeRadius, -1f, 1f);
+            return math.lerp(p.TemperatureMinC, p.TemperatureMaxC, math.saturate(0.5f + 0.5f * t));
+        }
+
         private static Fields ComputeFields(in TerrainParams p, int x, int z)
         {
             var pos = new float2(x + 0.5f, z + 0.5f);
@@ -856,16 +870,7 @@ namespace Revoxel.World
                         * math.lerp(Ridged(p, warped), 1f, p.MassifShare * relief)
                     : 0f;
 
-            // Temperature at sea level: noise plus a north (cold) to south (warm) gradient.
-            var t =
-                (1f - p.TemperatureGradient)
-                    * noise.snoise(pos * p.TemperatureFrequency + p.TemperatureOffset)
-                + p.TemperatureGradient * math.clamp(-pos.y / p.EdgeRadius, -1f, 1f);
-            var seaTemperature = math.lerp(
-                p.TemperatureMinC,
-                p.TemperatureMaxC,
-                math.saturate(0.5f + 0.5f * t)
-            );
+            var seaTemperature = SeaTemperatureAt(p, pos);
             var altitude = baseHeight + mountain;
             var moisture = math.saturate(
                 0.5f

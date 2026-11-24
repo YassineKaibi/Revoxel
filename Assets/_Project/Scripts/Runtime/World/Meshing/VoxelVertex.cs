@@ -13,5 +13,8 @@ namespace Revoxel.World
 
         // x: voxel id. y: occlusion 0 to 1, where 1 is open.
         public float2 MaterialAo;
+
+        // Sky light of the corner, 0 to 1 (D-097).
+        public float SkyLight;
     }
 }

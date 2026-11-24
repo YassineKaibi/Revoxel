@@ -55,16 +55,27 @@ namespace Revoxel.Tests.EditMode
             return Mesh(padded, skipLiquidSides);
         }
 
+        // Meshes with a sky light buffer (PaddedIndex order, 0 to 255) instead of full light.
+        public Result MeshPaddedWithLight(Func<int3, ushort> voxelAt, NativeArray<byte> light)
+        {
+            using var padded = Pad(voxelAt);
+            return Mesh(padded, false, light);
+        }
+
         // Chunk interior only; every neighbor layer is Air.
         public Result MeshChunk(Func<int3, ushort> voxelAt) =>
             MeshPadded(pos => Coords.IsLocalInRange(pos) ? voxelAt(pos) : Air);
 
-        public Result Mesh(NativeArray<ushort> padded, bool skipLiquidSides = false)
+        public Result Mesh(
+            NativeArray<ushort> padded,
+            bool skipLiquidSides = false,
+            NativeArray<byte> light = default
+        )
         {
             var meshes = UnityEngine.Mesh.AllocateWritableMeshData(2);
             try
             {
-                Run(padded, meshes, skipLiquidSides);
+                Run(padded, meshes, skipLiquidSides, light);
                 var render = meshes[0];
                 var collision = meshes[1];
                 var result = new Result
@@ -146,14 +157,17 @@ namespace Revoxel.Tests.EditMode
         private void Run(
             NativeArray<ushort> padded,
             UnityEngine.Mesh.MeshDataArray meshes,
-            bool skipLiquidSides = false
+            bool skipLiquidSides = false,
+            NativeArray<byte> light = default
         )
         {
             using var renderLayout = ChunkMesher.CreateRenderLayout(Allocator.TempJob);
             using var collisionLayout = ChunkMesher.CreateCollisionLayout(Allocator.TempJob);
+            using var fullLight = SkyLight.CreateFullLight(Allocator.TempJob);
             new GreedyMeshJob
             {
                 Padded = padded,
+                SkyLight = light.IsCreated ? light : fullLight,
                 RenderData = _renderData,
                 RenderLayout = renderLayout,
                 CollisionLayout = collisionLayout,

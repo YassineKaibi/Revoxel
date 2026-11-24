@@ -15,6 +15,15 @@ namespace Revoxel.World
         public static readonly int CorruptionTintId = Shader.PropertyToID("_RevoxelCorruptionTint");
         public static readonly int AoMinId = Shader.PropertyToID("_RevoxelAoMin");
 
+        // (floor, curve, 0, 0) of the per-voxel sky light (D-097).
+        public static readonly int SkyLightId = Shader.PropertyToID("_RevoxelSkyLight");
+
+        // Climate map (D-101): sea-level temperature per 32 m cell, and (sea level m, lapse
+        // rate °C per m, 1 / map size m, enabled) plus the map origin in meters.
+        public static readonly int ClimateMapId = Shader.PropertyToID("_RevoxelClimateMap");
+        public static readonly int ClimateId = Shader.PropertyToID("_RevoxelClimate");
+        public static readonly int ClimateOriginId = Shader.PropertyToID("_RevoxelClimateOrigin");
+
         // Water look (D-073), read by Revoxel/Water; the underwater fog also by Revoxel/Voxel.
         public const string WaterShaderName = "Revoxel/Water";
         public static readonly int WaterScatterId = Shader.PropertyToID("_RevoxelWaterScatter");
@@ -59,6 +68,11 @@ namespace Revoxel.World
             SetCorruption(0f);
             Shader.SetGlobalVector(CorruptionTintId, settings.CorruptionTint.linear);
             Shader.SetGlobalFloat(AoMinId, settings.AoMin);
+            Shader.SetGlobalVector(
+                SkyLightId,
+                new Vector4(settings.SkyLightFloor, settings.SkyLightCurve, 0f, 0f)
+            );
+            Shader.SetGlobalVector(ClimateId, Vector4.zero);
             Shader.SetGlobalVector(WaterScatterId, settings.WaterScatter.linear);
             Shader.SetGlobalVector(WaterAbsorptionId, settings.WaterAbsorptionPerMeter);
             Shader.SetGlobalVector(PollutedWaterScatterId, settings.PollutedWaterScatter.linear);
@@ -92,6 +106,20 @@ namespace Revoxel.World
             Shader.SetGlobalVector(UnderwaterColorId, settings.UnderwaterColor.linear);
             Shader.SetGlobalFloat(UnderwaterDensityId, settings.UnderwaterDensityPerMeter);
             SetUnderwater(false);
+        }
+
+        // The climate map is ready: snow follows it from now on (D-101).
+        public static void SetClimateMap(Texture2D map, float seaLevelMeters, float lapsePerMeter)
+        {
+            Shader.SetGlobalTexture(ClimateMapId, map);
+            Shader.SetGlobalVector(
+                ClimateId,
+                new Vector4(seaLevelMeters, lapsePerMeter, 1f / ClimateMap.SizeMeters, 1f)
+            );
+            Shader.SetGlobalVector(
+                ClimateOriginId,
+                new Vector4(ClimateMap.OriginMeters, ClimateMap.OriginMeters, 0f, 0f)
+            );
         }
 
         // Underwater fog on (the main camera is in a liquid) or off.
