@@ -123,7 +123,8 @@ namespace Revoxel.Tests.EditMode
                 VoxelShaderGlobals.SetDefaults(settings);
                 VoxelShaderGlobals.SetMaterialTable(table);
 
-                Assert.That(Shader.GetGlobalFloat(VoxelShaderGlobals.CorruptionId), Is.EqualTo(1f));
+                // Clean by default until the corruption WP (D-093).
+                Assert.That(Shader.GetGlobalFloat(VoxelShaderGlobals.CorruptionId), Is.EqualTo(0f));
                 Assert.That(
                     Shader.GetGlobalFloat(VoxelShaderGlobals.AoMinId),
                     Is.EqualTo(settings.AoMin)
