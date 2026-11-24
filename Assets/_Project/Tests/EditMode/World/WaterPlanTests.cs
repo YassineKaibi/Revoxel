@@ -78,86 +78,156 @@ namespace Revoxel.Tests.EditMode
             }
         }
 
-        // 2026-11-24 review (outlets "carved right in the lake ... visibly deeper than the
-        // lake itself ... narrow"): every outlet starts in the lake's water at its level,
-        // falls at most the inset below that level through its flare (no trench below the lake),
-        // and its mouth is at least twice as wide as the river past the flare. Every river
-        // into a lake ends in the lake's water at its level.
+        // 2026-11-24 reviews (outlets "carved right in the lake ... deeper than the lake
+        // itself"; then "their depths don't match ... the stream is clearly higher than the
+        // lake"; "the V shape is bad ... it should follow the existing voxel lines"): along
+        // the axis of every mouth, from the lake outward over the flare, every column is
+        // water; an outlet's water is the lake's level (an inlet ends at it); the bed has
+        // no ridge between the lake and the channel (never more than a voxel above both
+        // ends); and the water opens like a funnel where the terrain lets it: no mouth is
+        // narrower in its middle than at its end, and on average 1.5 times as wide.
         [Test]
-        public void Lakes_OutletsOpenIntoTheShore()
+        public void Lakes_MouthsJoinTheLake()
         {
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
             var plan = p.WaterPlan;
+            var mouths = 0;
             var outlets = 0;
-            var inlets = 0;
+            var ratios = new System.Collections.Generic.List<float>();
             for (var r = 0; r < plan.Rivers.Length; r++)
             {
                 var river = plan.Rivers[r];
-                if (river.SourceLake >= 0)
+                for (var end = 0; end < 2; end++)
                 {
-                    outlets++;
-                    var lake = plan.Lakes[river.SourceLake];
-                    var source = plan.Nodes[river.Start];
-                    var at = (int2)math.floor(source.Pos);
-                    var column = WaterMap.Column(p, at.x, at.y);
-                    Assert.That(
-                        source.Level,
-                        Is.EqualTo(lake.Level).Within(LevelEpsilon),
-                        $"river {r} source level"
-                    );
-                    Assert.That(
-                        column.IsWet && column.Level == (int)lake.Level,
-                        Is.True,
-                        $"river {r} source at {at} in the lake's water"
-                    );
-                    var past = -1f;
-                    var along = 0f;
-                    for (var n = river.Start; n < river.Start + river.Count; n++)
+                    var k = end == 0 ? river.SourceLake : river.EndLake;
+                    if (k < 0)
                     {
-                        var node = plan.Nodes[n];
-                        along +=
-                            n > river.Start ? math.distance(plan.Nodes[n - 1].Pos, node.Pos) : 0f;
-                        if (along < p.FlareLength)
+                        continue;
+                    }
+
+                    mouths++;
+                    outlets += end == 0 ? 1 : 0;
+                    var lake = plan.Lakes[k];
+                    // The mouth: from the lake end while the river is open toward its lake.
+                    var axis = new System.Collections.Generic.List<RiverNode>();
+                    for (var i = 0; i < river.Count; i++)
+                    {
+                        var node = plan.Nodes[
+                            end == 0 ? river.Start + i : river.Start + river.Count - 1 - i
+                        ];
+                        if (node.Open <= 0f)
+                        {
+                            break;
+                        }
+
+                        axis.Add(node);
+                    }
+
+                    var grounds = new int[axis.Count];
+                    for (var i = 0; i < axis.Count; i++)
+                    {
+                        var at = (int2)math.floor(axis[i].Pos);
+                        var column = WaterMap.Column(p, at.x, at.y);
+                        Assert.That(
+                            column.IsWet,
+                            Is.True,
+                            $"river {r} mouth {end} node {i} at {at} dry"
+                        );
+                        if (end == 0)
                         {
                             Assert.That(
-                                node.Level,
-                                Is.GreaterThanOrEqualTo(lake.Level - p.RiverInset - LevelEpsilon),
-                                $"river {r} node {n - river.Start} below the lake"
+                                column.Level,
+                                Is.EqualTo((int)lake.Level),
+                                $"river {r} outlet node {i} at {at}"
                             );
                         }
-                        else if (past < 0f)
-                        {
-                            past = node.HalfWidth;
-                        }
+
+                        grounds[i] = column.Ground;
                     }
 
-                    if (past > 0f)
+                    if (end == 1)
                     {
                         Assert.That(
-                            source.HalfWidth,
-                            Is.GreaterThanOrEqualTo(2f * past),
-                            $"river {r} mouth width"
+                            axis[0].Level,
+                            Is.EqualTo(lake.Level).Within(LevelEpsilon),
+                            $"river {r} inlet level"
                         );
                     }
-                }
 
-                if (river.EndLake >= 0)
-                {
-                    inlets++;
-                    var last = plan.Nodes[river.Start + river.Count - 1];
-                    var at = (int2)math.floor(last.Pos);
-                    var column = WaterMap.Column(p, at.x, at.y);
-                    Assert.That(
-                        last.Level,
-                        Is.EqualTo(plan.Lakes[river.EndLake].Level).Within(LevelEpsilon),
-                        $"river {r} end level"
-                    );
-                    Assert.That(column.IsWet, Is.True, $"river {r} ends at {at} in water");
+                    var ends = math.max(grounds[0], grounds[grounds.Length - 1]);
+                    for (var i = 0; i < grounds.Length; i++)
+                    {
+                        Assert.That(
+                            grounds[i],
+                            Is.LessThanOrEqualTo(ends + 1),
+                            $"river {r} mouth {end}: ridge at node {i} ({string.Join(",", grounds)})"
+                        );
+                    }
+
+                    // The funnel, out of the lake's water (open below 1): the water across its
+                    // middle against its end, each counted within that node's lowering band.
+                    var outside = axis.FindAll(node => node.Open < 1f);
+                    if (outside.Count >= 3)
+                    {
+                        var ratio =
+                            WaterWidth(p, outside, outside.Count / 2)
+                            / math.max(1f, WaterWidth(p, outside, outside.Count - 1));
+                        Assert.That(
+                            ratio,
+                            Is.GreaterThanOrEqualTo(1f),
+                            $"river {r} mouth {end} narrows toward the lake"
+                        );
+                        ratios.Add(ratio);
+                    }
                 }
             }
 
+            var mean = 0f;
+            foreach (var ratio in ratios)
+            {
+                mean += ratio / ratios.Count;
+            }
+
+            Assert.That(
+                mean,
+                Is.GreaterThanOrEqualTo(1.5f),
+                $"mouth funnels {string.Join(", ", ratios)}"
+            );
             Assert.That(outlets, Is.EqualTo(plan.Lakes.Length));
-            Assert.That(inlets, Is.GreaterThan(0));
+            Assert.That(mouths, Is.GreaterThan(outlets));
+        }
+
+        // Width of the water across the axis at node i, voxels, counted out to the node's
+        // lowering band on each side ((half width + bank) x (1 + spread x open)).
+        private static float WaterWidth(
+            in TerrainParams p,
+            System.Collections.Generic.List<RiverNode> axis,
+            int i
+        )
+        {
+            var node = axis[i];
+            var dir = i + 1 < axis.Count ? axis[i + 1].Pos - node.Pos : node.Pos - axis[i - 1].Pos;
+            var side = math.normalizesafe(new float2(-dir.y, dir.x));
+            var band = (int)((node.HalfWidth + p.BankWidth) * (1f + p.MouthSpread * node.Open));
+            var width = 0f;
+            for (var s = -1; s <= 1; s += 2)
+            {
+                var k = 0;
+                while (k < band)
+                {
+                    var q = (int2)math.floor(node.Pos + side * (s * (k + 1)));
+                    if (!WaterMap.Column(p, q.x, q.y).IsWet)
+                    {
+                        break;
+                    }
+
+                    k++;
+                }
+
+                width += k;
+            }
+
+            return width;
         }
 
         // 2026-11-24 review ("too straight"): rivers wind. Over every 100 m window of each

@@ -101,10 +101,9 @@ namespace Revoxel.World
         public float RiverStep;
         public float RiverInset;
 
-        // Length (voxels), width factor and depth share of a river's flare at a lake.
+        // Length of a river's mouth at a lake (voxels) and how much further it lowers land.
         public float FlareLength;
-        public float FlareWidth;
-        public float FlareDepth;
+        public float MouthSpread;
         public float FallMin;
         public float FallSteepness;
         public float BankWidth;
@@ -311,8 +310,7 @@ namespace Revoxel.World
             p.RiverStep = w.SegmentMeters * v;
             p.RiverInset = w.RiverInsetMeters * v;
             p.FlareLength = w.FlareMeters * v;
-            p.FlareWidth = w.FlareWidth;
-            p.FlareDepth = w.FlareDepth;
+            p.MouthSpread = w.MouthSpread;
             p.FallMin = w.FallMinMeters * v;
             p.FallSteepness = w.FallSteepness;
             p.BankWidth = w.BankWidthMeters * v;

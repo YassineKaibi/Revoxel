@@ -145,19 +145,17 @@ namespace Revoxel.World
 
         [SerializeField]
         [Tooltip(
-            "Where a river leaves or enters a lake it opens in a V over this length, m."
+            "Where a river leaves or enters a lake it mouth opens over this length, m."
                 + Placeholder
         )]
         private float _flareMeters = 24f;
 
         [SerializeField]
-        [Tooltip("At the lake a river is this many times as wide as past its flare." + Placeholder)]
-        private float _flareWidth = 3f;
-
-        [SerializeField]
-        [Tooltip("At the lake a river is this share of its depth past its flare." + Placeholder)]
-        [Range(0f, 1f)]
-        private float _flareDepth = 0.3f;
+        [Tooltip(
+            "At a lake the ground a river lowers reaches this many times further from its axis, plus one."
+                + Placeholder
+        )]
+        private float _mouthSpread = 3f;
 
         [SerializeField]
         [Tooltip(
@@ -259,9 +257,7 @@ namespace Revoxel.World
 
         public float FlareMeters => _flareMeters;
 
-        public float FlareWidth => _flareWidth;
-
-        public float FlareDepth => _flareDepth;
+        public float MouthSpread => _mouthSpread;
 
         public float RiverInsetMeters => _riverInsetMeters;
 
@@ -324,7 +320,7 @@ namespace Revoxel.World
                 || _meanderMinMeters < 0f
                 || _riverInsetMeters < 0f
                 || _flareMeters < 0f
-                || _flareWidth < 1f
+                || _mouthSpread < 0f
                 || _fallMinMeters <= 0f
                 || _fallSteepness <= 0f
             )

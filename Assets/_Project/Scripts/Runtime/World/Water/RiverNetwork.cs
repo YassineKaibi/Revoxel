@@ -32,6 +32,11 @@ namespace Revoxel.World
         // channel threshold, km².
         private const float ReferenceAreaKm2 = 1f;
 
+        // A river's path reaches this many grid cells into a lake at its mouth, and its
+        // channel at most this many points (8 m each) into the lake's water.
+        private const int MouthCells = 3;
+        private const int MouthPoints = 4;
+
         // A meander's offset is at most this share of its wavelength.
         private const float MaxMeanderShare = 0.1f;
 
@@ -210,6 +215,7 @@ namespace Revoxel.World
                             p,
                             chains[c],
                             cells,
+                            receiver,
                             area,
                             nodeOf,
                             nodes,
@@ -319,7 +325,8 @@ namespace Revoxel.World
             in TerrainParams p,
             float2 pos,
             float2 dir,
-            float halfWidth
+            float halfWidth,
+            bool beyond
         )
         {
             var side = new float2(-dir.y, dir.x);
@@ -329,6 +336,11 @@ namespace Revoxel.World
                 lowest,
                 math.min(Surface(p, pos + side * halfWidth), Surface(p, pos - side * halfWidth))
             );
+            if (!beyond)
+            {
+                return lowest;
+            }
+
             return math.min(
                 lowest,
                 math.min(Surface(p, pos + side * far), Surface(p, pos - side * far))
@@ -343,8 +355,8 @@ namespace Revoxel.World
             return Hydrology.LakeSurface(p, pos, land, out _, out var level) ? level : land;
         }
 
-        private static bool InLake(in TerrainParams p, float2 pos) =>
-            Hydrology.LakeSurface(p, pos, Land(p, pos), out _, out _);
+        private static bool InLakeOf(in TerrainParams p, float2 pos, int lake) =>
+            Hydrology.InLakeWater(p, pos, Land(p, pos), lake);
 
         // How open a river is at arc length s from a lake: 1 at the lake, 0 past the flare.
         private static float Flare(in TerrainParams p, float s) =>
@@ -354,6 +366,7 @@ namespace Revoxel.World
             in TerrainParams p,
             in Chain chain,
             NativeList<int> cells,
+            NativeArray<int> receiver,
             NativeArray<float> area,
             NativeArray<int> nodeOf,
             NativeList<RiverNode> nodes,
@@ -364,7 +377,53 @@ namespace Revoxel.World
         )
         {
             // The path through the cell centers (xy) with the area drained (z), then its end.
+            // An outlet's path reaches back into its lake along the flow, so its channel can
+            // cut through the lake's shallow shelf down to where the floor is deep enough.
             points.Clear();
+            if (chain.SourceLake >= 0)
+            {
+                var upstream = new FixedList64Bytes<int>();
+                var cur = cells[chain.Start];
+                for (var k = 0; k < MouthCells; k++)
+                {
+                    var best = -1;
+                    var at = HydroGrid.Cell(cur);
+                    for (var d = 0; d < 8; d++)
+                    {
+                        var c = at + DepressionFill.Neighbor(d);
+                        if (!HydroGrid.InGrid(c))
+                        {
+                            continue;
+                        }
+
+                        var j = HydroGrid.Index(c);
+                        if (
+                            p.WaterPlan.LakeOf[j] - 1 == chain.SourceLake
+                            && receiver[j] == cur
+                            && (best < 0 || area[j] > area[best])
+                        )
+                        {
+                            best = j;
+                        }
+                    }
+
+                    if (best < 0)
+                    {
+                        break;
+                    }
+
+                    upstream.Add(best);
+                    cur = best;
+                }
+
+                for (var k = upstream.Length - 1; k >= 0; k--)
+                {
+                    points.Add(
+                        new float3(HydroGrid.Center(HydroGrid.Cell(upstream[k])), area[upstream[k]])
+                    );
+                }
+            }
+
             for (var j = 0; j < chain.Count; j++)
             {
                 var cell = cells[chain.Start + j];
@@ -382,6 +441,21 @@ namespace Revoxel.World
             else if (chain.Next >= 0)
             {
                 points.Add(new float3(HydroGrid.Center(HydroGrid.Cell(chain.Next)), lastArea));
+
+                // Into a lake the path goes on along the flow, so the channel reaches the
+                // lake's deeper floor.
+                var lakeEnd = chain.End == End.Lake ? p.WaterPlan.LakeOf[chain.Next] - 1 : -1;
+                var c = chain.Next;
+                for (var k = 1; k < MouthCells && lakeEnd >= 0; k++)
+                {
+                    c = receiver[c];
+                    if (c < 0 || p.WaterPlan.LakeOf[c] - 1 != lakeEnd)
+                    {
+                        break;
+                    }
+
+                    points.Add(new float3(HydroGrid.Center(HydroGrid.Cell(c)), lastArea));
+                }
             }
             else
             {
@@ -410,18 +484,65 @@ namespace Revoxel.World
             Meander(p, points, scratch, cells[chain.Start]);
             Resample(points, scratch, p.RiverStep);
 
-            // An outlet starts at the shore: its last point in the lake's water.
+            // Where the river leaves (or enters) its lake's water for good: the path can run
+            // along a lake's shallow edge before it. An outlet starts at most MouthPoints
+            // before its exit, where the floor is deep enough or the lake's water ends, so its
+            // channel cuts through the shelf; an inlet ends likewise after its entry.
+            var mouthArc = 0f;
             if (chain.SourceLake >= 0)
             {
-                var shore = 0;
-                while (shore + 1 < points.Length && InLake(p, points[shore + 1].xy))
+                var lakeLevel = p.WaterPlan.Lakes[chain.SourceLake].Level;
+                var exit = -1;
+                for (var i = 0; i < points.Length; i++)
                 {
-                    shore++;
+                    exit = InLakeOf(p, points[i].xy, chain.SourceLake) ? i : exit;
                 }
 
-                if (shore > 0)
+                var start = math.max(0, exit);
+                while (
+                    start > 0
+                    && exit - start < MouthPoints
+                    && InLakeOf(p, points[start - 1].xy, chain.SourceLake)
+                    && Land(p, points[start].xy) > lakeLevel - Depth(p, points[start].z)
+                )
                 {
-                    points.RemoveRange(0, shore);
+                    start--;
+                }
+
+                if (start > 0)
+                {
+                    points.RemoveRange(0, start);
+                }
+
+                for (var i = 1; i <= exit - start; i++)
+                {
+                    mouthArc += math.distance(points[i - 1].xy, points[i].xy);
+                }
+            }
+
+            if (endLake >= 0)
+            {
+                var entry = -1;
+                for (var i = 0; i < points.Length && entry < 0; i++)
+                {
+                    entry = InLakeOf(p, points[i].xy, endLake) ? i : -1;
+                }
+
+                if (entry >= 0)
+                {
+                    var stop = entry;
+                    while (
+                        stop + 1 < points.Length
+                        && stop - entry < MouthPoints
+                        && InLakeOf(p, points[stop + 1].xy, endLake)
+                        && Land(p, points[stop].xy) > joinLevel - Depth(p, points[stop].z)
+                    )
+                    {
+                        stop++;
+                    }
+
+                    stop = math.max(stop, math.min(1, points.Length - 1));
+                    points.RemoveRange(stop + 1, points.Length - stop - 1);
                 }
             }
 
@@ -436,7 +557,10 @@ namespace Revoxel.World
             var level =
                 chain.SourceLake >= 0
                     ? p.WaterPlan.Lakes[chain.SourceLake].Level
-                    : math.max(p.SeaLevel, LowestAcross(p, first.xy, dir0, hw0) - p.RiverInset);
+                    : math.max(
+                        p.SeaLevel,
+                        LowestAcross(p, first.xy, dir0, hw0, true) - p.RiverInset
+                    );
             var arc = 0f;
             path.Add(
                 new RiverNode
@@ -454,10 +578,17 @@ namespace Revoxel.World
                 var dir = math.normalizesafe(to.xy - from.Pos);
                 arc += math.distance(from.Pos, to.xy);
 
-                // Over an outlet's sill the water keeps the lake's level: the inset comes in
-                // over the flare.
+                // Through an outlet's mouth the water keeps the lake's level: the inset comes
+                // in over the next flare length.
                 var inset =
-                    chain.SourceLake >= 0 ? p.RiverInset * (1f - Flare(p, arc)) : p.RiverInset;
+                    chain.SourceLake >= 0
+                        ? p.RiverInset
+                            * math.smoothstep(
+                                mouthArc + p.FlareLength,
+                                mouthArc + 2f * p.FlareLength,
+                                arc
+                            )
+                        : p.RiverInset;
                 var hw = HalfWidth(p, to.z);
                 var last = i == points.Length - 1;
                 var lowest = float.MaxValue;
@@ -466,7 +597,18 @@ namespace Revoxel.World
                 {
                     var f = (float)s / SegmentSamples;
                     var q = math.lerp(from.Pos, to.xy, f);
-                    var h = s < SegmentSamples ? Surface(p, q) : LowestAcross(p, q, dir, hw);
+                    // In an outlet's mouth the level reads only the channel: the land beyond
+                    // its banks may dip just past the lake's edge.
+                    var h =
+                        s < SegmentSamples
+                            ? Surface(p, q)
+                            : LowestAcross(
+                                p,
+                                q,
+                                dir,
+                                hw,
+                                chain.SourceLake < 0 || arc >= p.FlareLength
+                            );
                     if (dropAt >= 1f && h - inset < level)
                     {
                         dropAt = (s - 1f) / SegmentSamples;
@@ -482,7 +624,7 @@ namespace Revoxel.World
                     newLevel = p.SeaLevel;
                     done = true;
                 }
-                else if (endLake >= 0 && (last || InLake(p, to.xy)))
+                else if (endLake >= 0 && last)
                 {
                     newLevel = joinLevel;
                     done = true;
@@ -520,31 +662,49 @@ namespace Revoxel.World
                 }
             }
 
-            PoolsAndBends(p, path, cells[chain.Start]);
-
-            // Flares (2026-11-24 review): where a river leaves or enters a lake it opens in a
-            // V, wider and shallower toward the lake's water.
-            if (chain.SourceLake >= 0 || endLake >= 0)
+            // Mouths (2026-11-24 reviews): how open each node is toward its lake, and the
+            // land at the node, for Hydrology to lower the ground there by the terrain's shape.
+            var total = 0f;
+            for (var n = 1; n < path.Length; n++)
             {
-                var total = 0f;
-                for (var n = 1; n < path.Length; n++)
-                {
-                    total += math.distance(path[n - 1].Pos, path[n].Pos);
-                }
+                total += math.distance(path[n - 1].Pos, path[n].Pos);
+            }
 
-                var along = 0f;
-                for (var n = 0; n < path.Length; n++)
+            // The inlet's entry: the first node in its lake's water.
+            var entryArc = total;
+            var walked = 0f;
+            for (var n = 0; n < path.Length && endLake >= 0; n++)
+            {
+                walked += n > 0 ? math.distance(path[n - 1].Pos, path[n].Pos) : 0f;
+                if (InLakeOf(p, path[n].Pos, endLake))
                 {
-                    along += n > 0 ? math.distance(path[n - 1].Pos, path[n].Pos) : 0f;
-                    var open = math.max(
-                        chain.SourceLake >= 0 ? Flare(p, along) : 0f,
-                        endLake >= 0 ? Flare(p, total - along) : 0f
-                    );
-                    var node = path[n];
-                    node.HalfWidth *= 1f + (p.FlareWidth - 1f) * open;
-                    node.Depth *= math.lerp(1f, p.FlareDepth, open);
-                    path[n] = node;
+                    entryArc = walked;
+                    break;
                 }
+            }
+
+            var along = 0f;
+            for (var n = 0; n < path.Length; n++)
+            {
+                along += n > 0 ? math.distance(path[n - 1].Pos, path[n].Pos) : 0f;
+                var node = path[n];
+                node.Open = math.max(
+                    chain.SourceLake >= 0 ? Flare(p, math.max(0f, along - mouthArc)) : 0f,
+                    endLake >= 0 ? Flare(p, math.max(0f, entryArc - along)) : 0f
+                );
+                node.Land = Land(p, node.Pos);
+                path[n] = node;
+            }
+
+            PoolsAndBends(p, path, cells[chain.Start]);
+            if (chain.SourceLake >= 0)
+            {
+                SlopeMouth(path, 0, 1);
+            }
+
+            if (endLake >= 0)
+            {
+                SlopeMouth(path, path.Length - 1, -1);
             }
 
             var river = new River
@@ -704,6 +864,34 @@ namespace Revoxel.World
             points.AddRange(scratch.AsArray());
         }
 
+        // The bed through a mouth slopes evenly from the lake's floor where the channel
+        // starts (from) to the channel's depth where the mouth ends (the first node no
+        // longer open): no riffle or lip between the lake and the river.
+        private static void SlopeMouth(NativeList<RiverNode> path, int from, int step)
+        {
+            var end = from;
+            while (end >= 0 && end < path.Length && path[end].Open > 0f)
+            {
+                end += step;
+            }
+
+            if (end < 0 || end >= path.Length || end == from)
+            {
+                return;
+            }
+
+            var start = path[from];
+            var lakeDepth = math.max(start.Depth, start.Level - start.Land);
+            var channelDepth = path[end].Depth;
+            for (var n = from; n != end; n += step)
+            {
+                var node = path[n];
+                var target = node.Level - math.lerp(channelDepth, lakeDepth, node.Open);
+                node.Depth = math.max(0f, node.Level - target);
+                path[n] = node;
+            }
+        }
+
         // Pools and riffles: depth varies along the river by a noise at half the meander
         // wavelength; and each node's bend (signed curvature in half widths, smoothed over
         // its neighbors) for the deeper water at the outside of bends.
@@ -727,7 +915,10 @@ namespace Revoxel.World
                         / Wavelength(p, node.HalfWidth);
                 }
 
-                node.Depth *= 1f + p.DepthVariation * noise.snoise(new float2(phase, lane));
+                // Even through a lake's mouth, so the trough runs into the lake without a riffle.
+                node.Depth *=
+                    1f
+                    + p.DepthVariation * (1f - node.Open) * noise.snoise(new float2(phase, lane));
                 path[n] = node;
                 if (n > 0 && n + 1 < path.Length)
                 {

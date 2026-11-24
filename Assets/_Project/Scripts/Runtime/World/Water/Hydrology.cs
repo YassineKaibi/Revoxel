@@ -21,6 +21,12 @@ namespace Revoxel.World
         public float HalfWidth;
         public float Depth;
         public float Bend;
+
+        // How open the mouth is where a river meets a lake: 1 at the lake, 0 past the
+        // flare; and the shaped land at the node (the mouth lowers the land, keeping its
+        // shape).
+        public float Open;
+        public float Land;
     }
 
     // A river: its nodes in TerrainParams.RiverNodes, source first, and the box (min x, min
@@ -190,6 +196,7 @@ namespace Revoxel.World
             var i = HydroGrid.Index(home);
             var near = p.RiverStep + p.RiverReach;
             var current = -1;
+            var start = 0;
 
             // The segments' cuts are blended by nearness (a soft nearest), per river: the
             // nearest stretch shapes the bank and bends blend over BlendDistance, so a lower
@@ -202,6 +209,7 @@ namespace Revoxel.World
                 {
                     Flush(ref shaping, ref cut);
                     current = run.x;
+                    start = plan.Rivers[current].Start;
                 }
 
                 for (var n = run.y; n <= run.z; n++)
@@ -217,6 +225,36 @@ namespace Revoxel.World
                     var s = lengthSq > 0f ? math.saturate(math.dot(pos - a, ab) / lengthSq) : 0f;
                     var foot = a + ab * s;
                     var dSq = math.distancesq(pos, foot);
+
+                    // Over land at or above a segment's water (and the water just upstream),
+                    // beyond the farthest its bank can reach at this land (shore and wall for
+                    // the deepest cut its levels allow, or its mouth's band) the segment's
+                    // bank is the land itself: only its share of the blend is added, the same
+                    // value Profile would give, without the profile (about half the calls).
+                    var na = plan.Nodes[n];
+                    var nc = plan.Nodes[n + 1];
+                    var upstream = math.max(na.Level, plan.Nodes[math.max(start, n - 1)].Level);
+                    if (land >= upstream + p.BankLip)
+                    {
+                        var deepest = land - (math.min(na.Level, nc.Level) + p.BankLip);
+                        var rise = math.min(deepest, p.ShoreCut);
+                        var shore = p.BankWidth + rise * p.ShoreRun;
+                        var wall = math.max(
+                            0f,
+                            math.min((deepest - rise) * wallRun, p.MaxWallWidth - shore)
+                        );
+                        var widest = math.max(na.HalfWidth, nc.HalfWidth);
+                        var mouth =
+                            (widest + p.BankWidth)
+                            * (1f + p.MouthSpread * math.max(na.Open, nc.Open));
+                        var reach = math.max(widest + shore + wall, mouth) + 1f;
+                        if (dSq > reach * reach)
+                        {
+                            cut.Add(math.sqrt(dSq), land);
+                            continue;
+                        }
+                    }
+
                     var cross = ab.x * (pos.y - foot.y) - ab.y * (pos.x - foot.x);
                     var side = cross >= 0f ? 1f : -1f;
                     ShapeByRiver(p, run.x, dSq, side, n, s, land, wallRun, ref shaping, ref cut);
@@ -310,6 +348,23 @@ namespace Revoxel.World
             return lake >= 0;
         }
 
+        // Whether a column whose shaped land is land is water of the given lake.
+        public static bool InLakeWater(in TerrainParams p, float2 pos, float land, int lake)
+        {
+            if (lake < 0 || lake >= p.WaterPlan.Lakes.Length)
+            {
+                return false;
+            }
+
+            var ids = new FixedList64Bytes<int>();
+            var distances = new FixedList64Bytes<float>();
+            NearLakes(p, pos, ref ids, ref distances);
+            var n = ids.IndexOf(lake);
+            return n >= 0
+                && distances[n] <= LakeShoreReach
+                && math.floor(land) < math.floor(p.WaterPlan.Lakes[lake].Level);
+        }
+
         // The column shaped by one segment of a river, from the squared distance to its
         // nearest point on the segment (node + t). Every segment near the column shapes it
         // and the results combine (the lowest cut, the highest floor), so the ground stays
@@ -355,6 +410,33 @@ namespace Revoxel.World
                 land,
                 out var h
             );
+            // At a lake's mouth the river lowers the existing ground by a smooth amount that
+            // fades away from its axis (up to MouthSpread times wider at the lake) instead of
+            // drawing a channel: the water lies wherever that ground is under the level, so
+            // its outline follows the terrain (2026-11-24 review).
+            var open = math.lerp(a.Open, c.Open, t);
+            var reach = (halfWidth + p.BankWidth) * (1f + p.MouthSpread * open);
+            if (open > 0f && distance < reach)
+            {
+                // Toward the band's edge the ground comes back to the land, and never below
+                // the level plus the lip there, so the water it holds stays held.
+                var drop = math.max(0f, math.lerp(a.Land, c.Land, t) - (nearestLevel - depth));
+                var k = 1f - math.smoothstep(0f, reach, distance);
+                var lowered = math.lerp(math.max(land, nearestLevel + p.BankLip), land - drop, k);
+                h = math.lerp(h, lowered, open);
+                var wet =
+                    math.floor(h) < math.floor(nearestLevel)
+                    && nearestLevel > p.SeaLevel
+                    && land >= p.SeaLevel;
+                z = wet ? Zone.Water : Zone.Bank;
+
+                // Dry ground in a mouth holds the water beside it whatever the blend.
+                if (!wet && nearestLevel > p.SeaLevel && land >= p.SeaLevel)
+                {
+                    shaping.Floor = math.max(shaping.Floor, nearestLevel);
+                }
+            }
+
             // Water and floors combine as for any water; the cut joins the river's blend
             // (no change counts as the land).
             var carves = z == Zone.Bank && h <= land;

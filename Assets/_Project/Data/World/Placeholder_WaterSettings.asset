@@ -37,8 +37,7 @@ MonoBehaviour:
   _bendDepthShift: 0.5
   _segmentMeters: 8
   _flareMeters: 24
-  _flareWidth: 3
-  _flareDepth: 0.3
+  _mouthSpread: 3
   _riverInsetMeters: 0.5
   _fallMinMeters: 2
   _fallSteepness: 4
