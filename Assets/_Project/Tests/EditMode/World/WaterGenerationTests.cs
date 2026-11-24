@@ -355,6 +355,83 @@ namespace Revoxel.Tests.EditMode
             Assert.That(Percentile90(lakes), Is.LessThan(30f), "lake shores, 90th percentile");
         }
 
+        // 2026-11-24 review ("just above the water surface, it jumps by about 2 to 4 voxels
+        // straight up"): walking out of every river along its cross-sections, the ground
+        // rises at most 2 voxels above the water within 3 voxels of the waterline on at
+        // least 95 % of the banks. Banks within 24 m of a waterfall (its gorge walls hold
+        // the water above it) are not counted.
+        [Test]
+        public void Rivers_BanksRiseSmoothlyFromTheWater()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            var falls = new System.Collections.Generic.List<float2>();
+            for (var n = 0; n + 1 < plan.Nodes.Length; n++)
+            {
+                if (plan.Nodes[n].Level - plan.Nodes[n + 1].Level >= p.FallMin)
+                {
+                    falls.Add(plan.Nodes[n].Pos);
+                }
+            }
+
+            var banks = 0;
+            var steep = 0;
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                for (var n = river.Start + 6; n + 6 < river.Start + river.Count; n += 3)
+                {
+                    var node = plan.Nodes[n];
+                    var nearFall = false;
+                    foreach (var fall in falls)
+                    {
+                        nearFall |=
+                            math.distance(fall, node.Pos) < 24f * WorldConstants.VoxelsPerMeter;
+                    }
+
+                    if (nearFall)
+                    {
+                        continue;
+                    }
+
+                    var dir = math.normalizesafe(plan.Nodes[n + 1].Pos - node.Pos);
+                    var side = new float2(-dir.y, dir.x);
+                    for (var s = -1; s <= 1; s += 2)
+                    {
+                        var surface = int.MinValue;
+                        for (var k = 0; k <= 120; k++)
+                        {
+                            var q = (int2)math.floor(node.Pos + side * (s * k));
+                            var column = WaterMap.Column(p, q.x, q.y);
+                            if (column.IsWet)
+                            {
+                                surface = column.Level;
+                                continue;
+                            }
+
+                            if (surface == int.MinValue)
+                            {
+                                break;
+                            }
+
+                            var beyond = (int2)math.floor(node.Pos + side * (s * (k + 3)));
+                            var rise = WaterMap.Column(p, beyond.x, beyond.y).Ground - surface;
+                            banks++;
+                            steep += rise > 2 ? 1 : 0;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            Assert.That(banks, Is.GreaterThan(500), "banks");
+            Assert.That(
+                (float)steep / banks,
+                Is.LessThan(0.05f),
+                $"steep banks ({steep} of {banks})"
+            );
+        }
+
         // Walking out of the water along dir: the steepest step (degrees, over 1 m) between
         // two dry columns where at least one is shaped, in a biome whose river walls are
         // not steep. False when the walk never leaves the water or the steepest step lies

@@ -44,8 +44,8 @@ namespace Revoxel.Tests.EditMode
             Assert.That(length * WorldConstants.VoxelSize, Is.GreaterThanOrEqualTo(15000f));
         }
 
-        // Width grows with the water drained: never narrower downstream, the mouth at least
-        // as wide as the source, and every node within the settings' bounds.
+        // Width grows with the water drained: never narrower downstream and within the
+        // settings' bounds, except in the flares where a river meets a lake (D-080 addendum).
         [Test]
         public void Rivers_WidenDownstream()
         {
@@ -56,17 +56,17 @@ namespace Revoxel.Tests.EditMode
                 for (var n = river.Start; n < river.Start + river.Count; n++)
                 {
                     var node = p.WaterPlan.Nodes[n];
+                    if (InFlare(p, river, n))
+                    {
+                        continue;
+                    }
+
                     Assert.That(
                         node.HalfWidth,
                         Is.InRange(p.MinHalfWidth - 1e-3f, p.MaxHalfWidth + 1e-3f),
                         $"river {r}"
                     );
-                    Assert.That(
-                        node.Depth,
-                        Is.InRange(p.MinDepth - 1e-3f, p.MaxDepth + 1e-3f),
-                        $"river {r}"
-                    );
-                    if (n > river.Start)
+                    if (n > river.Start && !InFlare(p, river, n - 1))
                     {
                         Assert.That(
                             node.HalfWidth,
@@ -76,6 +76,221 @@ namespace Revoxel.Tests.EditMode
                     }
                 }
             }
+        }
+
+        // 2026-11-24 review (outlets "carved right in the lake ... visibly deeper than the
+        // lake itself ... narrow"): every outlet starts in the lake's water at its level,
+        // falls at most the inset below that level through its flare (no trench below the lake),
+        // and its mouth is at least twice as wide as the river past the flare. Every river
+        // into a lake ends in the lake's water at its level.
+        [Test]
+        public void Lakes_OutletsOpenIntoTheShore()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            var outlets = 0;
+            var inlets = 0;
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                if (river.SourceLake >= 0)
+                {
+                    outlets++;
+                    var lake = plan.Lakes[river.SourceLake];
+                    var source = plan.Nodes[river.Start];
+                    var at = (int2)math.floor(source.Pos);
+                    var column = WaterMap.Column(p, at.x, at.y);
+                    Assert.That(
+                        source.Level,
+                        Is.EqualTo(lake.Level).Within(LevelEpsilon),
+                        $"river {r} source level"
+                    );
+                    Assert.That(
+                        column.IsWet && column.Level == (int)lake.Level,
+                        Is.True,
+                        $"river {r} source at {at} in the lake's water"
+                    );
+                    var past = -1f;
+                    var along = 0f;
+                    for (var n = river.Start; n < river.Start + river.Count; n++)
+                    {
+                        var node = plan.Nodes[n];
+                        along +=
+                            n > river.Start ? math.distance(plan.Nodes[n - 1].Pos, node.Pos) : 0f;
+                        if (along < p.FlareLength)
+                        {
+                            Assert.That(
+                                node.Level,
+                                Is.GreaterThanOrEqualTo(lake.Level - p.RiverInset - LevelEpsilon),
+                                $"river {r} node {n - river.Start} below the lake"
+                            );
+                        }
+                        else if (past < 0f)
+                        {
+                            past = node.HalfWidth;
+                        }
+                    }
+
+                    if (past > 0f)
+                    {
+                        Assert.That(
+                            source.HalfWidth,
+                            Is.GreaterThanOrEqualTo(2f * past),
+                            $"river {r} mouth width"
+                        );
+                    }
+                }
+
+                if (river.EndLake >= 0)
+                {
+                    inlets++;
+                    var last = plan.Nodes[river.Start + river.Count - 1];
+                    var at = (int2)math.floor(last.Pos);
+                    var column = WaterMap.Column(p, at.x, at.y);
+                    Assert.That(
+                        last.Level,
+                        Is.EqualTo(plan.Lakes[river.EndLake].Level).Within(LevelEpsilon),
+                        $"river {r} end level"
+                    );
+                    Assert.That(column.IsWet, Is.True, $"river {r} ends at {at} in water");
+                }
+            }
+
+            Assert.That(outlets, Is.EqualTo(plan.Lakes.Length));
+            Assert.That(inlets, Is.GreaterThan(0));
+        }
+
+        // 2026-11-24 review ("too straight"): rivers wind. Over every 100 m window of each
+        // river longer than 300 m (flares excluded), path length over straight distance
+        // averages at least 1.04, and at least 1.02 for every such river.
+        [Test]
+        public void Rivers_Wind()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            var window = 100f * WorldConstants.VoxelsPerMeter;
+            var rivers = 0;
+            var sum = 0f;
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                if (Length(plan, river) < 300f * WorldConstants.VoxelsPerMeter)
+                {
+                    continue;
+                }
+
+                var windows = 0;
+                var total = 0f;
+                for (var i = river.Start; i < river.Start + river.Count; i++)
+                {
+                    if (InFlare(p, river, i))
+                    {
+                        continue;
+                    }
+
+                    var arc = 0f;
+                    var j = i;
+                    while (
+                        j + 1 < river.Start + river.Count
+                        && arc < window
+                        && !InFlare(p, river, j + 1)
+                    )
+                    {
+                        arc += math.distance(plan.Nodes[j].Pos, plan.Nodes[j + 1].Pos);
+                        j++;
+                    }
+
+                    if (arc >= window)
+                    {
+                        total += arc / math.distance(plan.Nodes[i].Pos, plan.Nodes[j].Pos);
+                        windows++;
+                    }
+                }
+
+                if (windows == 0)
+                {
+                    continue;
+                }
+
+                var mean = total / windows;
+                Assert.That(mean, Is.GreaterThanOrEqualTo(1.02f), $"river {r} sinuosity");
+                sum += mean;
+                rivers++;
+            }
+
+            Assert.That(rivers, Is.GreaterThanOrEqualTo(5));
+            Assert.That(sum / rivers, Is.GreaterThanOrEqualTo(1.04f), "mean sinuosity");
+        }
+
+        // 2026-11-24 review ("almost constant depth"): pools and riffles. Along each river
+        // longer than 300 m (flares excluded), depth's coefficient of variation is at least
+        // 0.15.
+        [Test]
+        public void Rivers_DepthVaries()
+        {
+            var p = WorldAssets.TerrainParams(Seeds.Fixture);
+            var plan = p.WaterPlan;
+            var rivers = 0;
+            for (var r = 0; r < plan.Rivers.Length; r++)
+            {
+                var river = plan.Rivers[r];
+                if (Length(plan, river) < 300f * WorldConstants.VoxelsPerMeter)
+                {
+                    continue;
+                }
+
+                var n = 0;
+                var mean = 0.0;
+                var square = 0.0;
+                for (var i = river.Start; i < river.Start + river.Count; i++)
+                {
+                    if (!InFlare(p, river, i))
+                    {
+                        var d = plan.Nodes[i].Depth;
+                        mean += d;
+                        square += d * d;
+                        n++;
+                    }
+                }
+
+                mean /= n;
+                var spread = math.sqrt(math.max(0.0, square / n - mean * mean)) / mean;
+                Assert.That(spread, Is.GreaterThanOrEqualTo(0.15), $"river {r} depth variation");
+                rivers++;
+            }
+
+            Assert.That(rivers, Is.GreaterThanOrEqualTo(5));
+        }
+
+        private static float Length(in WaterPlan plan, in River river)
+        {
+            var length = 0f;
+            for (var k = river.Start; k + 1 < river.Start + river.Count; k++)
+            {
+                length += math.distance(plan.Nodes[k].Pos, plan.Nodes[k + 1].Pos);
+            }
+
+            return length;
+        }
+
+        // Within the flare of a river's source or end lake, by arc length.
+        private static bool InFlare(in TerrainParams p, in River river, int n)
+        {
+            var plan = p.WaterPlan;
+            var fromStart = 0f;
+            for (var k = river.Start; k < n; k++)
+            {
+                fromStart += math.distance(plan.Nodes[k].Pos, plan.Nodes[k + 1].Pos);
+            }
+
+            var toEnd = 0f;
+            for (var k = n; k + 1 < river.Start + river.Count; k++)
+            {
+                toEnd += math.distance(plan.Nodes[k].Pos, plan.Nodes[k + 1].Pos);
+            }
+
+            return (river.SourceLake >= 0 && fromStart < p.FlareLength)
+                || (river.EndLake >= 0 && toEnd < p.FlareLength);
         }
 
         // Review Focus 3: no kinks. Consecutive segments turn by at most 35°, except at the
@@ -188,8 +403,8 @@ namespace Revoxel.Tests.EditMode
             Assert.That(highest, Is.LessThanOrEqualTo(8), "highest raise, voxels");
         }
 
-        // D-080: every lake drains. One river starts in each lake, at its level, at least
-        // the minimum half width.
+        // D-080: every lake drains. Exactly one river starts at each lake, at its level, at
+        // least the minimum half width.
         [Test]
         public void Lakes_AllHaveAnOutlet()
         {
@@ -201,20 +416,23 @@ namespace Revoxel.Tests.EditMode
                 var outlets = 0;
                 for (var r = 0; r < plan.Rivers.Length; r++)
                 {
-                    var source = plan.Nodes[plan.Rivers[r].Start];
-                    var cell = HydroGrid.CellOf(source.Pos);
-                    if (
-                        plan.LakeOf[HydroGrid.Index(cell)] == k + 1
-                        && math.abs(source.Level - plan.Lakes[k].Level) < LevelEpsilon
-                    )
+                    if (plan.Rivers[r].SourceLake != k)
                     {
-                        Assert.That(
-                            source.HalfWidth,
-                            Is.GreaterThanOrEqualTo(p.MinHalfWidth - 1e-3f),
-                            $"lake {k}"
-                        );
-                        outlets++;
+                        continue;
                     }
+
+                    var source = plan.Nodes[plan.Rivers[r].Start];
+                    Assert.That(
+                        source.Level,
+                        Is.EqualTo(plan.Lakes[k].Level).Within(LevelEpsilon),
+                        $"lake {k}"
+                    );
+                    Assert.That(
+                        source.HalfWidth,
+                        Is.GreaterThanOrEqualTo(p.MinHalfWidth - 1e-3f),
+                        $"lake {k}"
+                    );
+                    outlets++;
                 }
 
                 Assert.That(outlets, Is.EqualTo(1), $"outlets of lake {k}");

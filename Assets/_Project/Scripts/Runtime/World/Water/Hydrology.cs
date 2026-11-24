@@ -12,13 +12,15 @@ namespace Revoxel.World
     }
 
     // A point of a river's centerline, its water surface, half width and depth there,
-    // voxels.
+    // voxels, and how much it bends: signed curvature in half widths, positive turning
+    // left, -1 to 1 (the deepest water moves to the outside of a bend).
     public struct RiverNode
     {
         public float2 Pos;
         public float Level;
         public float HalfWidth;
         public float Depth;
+        public float Bend;
     }
 
     // A river: its nodes in TerrainParams.RiverNodes, source first, and the box (min x, min
@@ -28,6 +30,10 @@ namespace Revoxel.World
         public int Start;
         public int Count;
         public float4 Bounds;
+
+        // The lake the river flows out of and the lake it ends in, -1 for none.
+        public int SourceLake;
+        public int EndLake;
     }
 
     // A lake in a basin of the hydrology grid (D-081): its surface level (voxels), the
@@ -69,8 +75,10 @@ namespace Revoxel.World
         // the nearest points of neighbor columns lie closer than that along the river.
         private const float BankHold = 3f;
 
-        // Segments of a river blend their cuts over about this distance (8 m), voxels.
-        private const float BlendDistance = 64f;
+        // Segments of a river blend their cuts over about this distance (1 m), voxels. Sized
+        // for 8 m segments (D-080): wider, the far segments pull the banks back toward the
+        // land and leave a step above the water (2026-11-24 review).
+        private const float BlendDistance = 8f;
 
         // A water's floor falls away from its flat bank by FloorFall voxels per voxel (27°):
         // it holds the water beside it (the flank of a fall, a junction) and is below any
@@ -138,38 +146,9 @@ namespace Revoxel.World
                 return;
             }
 
-            var home = HydroGrid.CellOf(pos);
             var ids = new FixedList64Bytes<int>();
             var distances = new FixedList64Bytes<float>();
-            for (var dz = -LakeSearch; dz <= LakeSearch; dz++)
-            for (var dx = -LakeSearch; dx <= LakeSearch; dx++)
-            {
-                var c = home + new int2(dx, dz);
-                if (!HydroGrid.InGrid(c))
-                {
-                    continue;
-                }
-
-                var k = plan.LakeOf[HydroGrid.Index(c)] - 1;
-                if (k < 0)
-                {
-                    continue;
-                }
-
-                var offset = math.abs(pos - HydroGrid.Center(c)) - HydroGrid.CellVoxels * 0.5f;
-                var distance = math.length(math.max(offset, 0f));
-                var slot = ids.IndexOf(k);
-                if (slot >= 0)
-                {
-                    distances[slot] = math.min(distances[slot], distance);
-                }
-                else if (ids.Length < ids.Capacity)
-                {
-                    ids.Add(k);
-                    distances.Add(distance);
-                }
-            }
-
+            NearLakes(p, pos, ref ids, ref distances);
             for (var n = 0; n < ids.Length; n++)
             {
                 var lake = plan.Lakes[ids[n]];
@@ -236,8 +215,11 @@ namespace Revoxel.World
                     var ab = plan.Nodes[n + 1].Pos - a;
                     var lengthSq = math.lengthsq(ab);
                     var s = lengthSq > 0f ? math.saturate(math.dot(pos - a, ab) / lengthSq) : 0f;
-                    var dSq = math.distancesq(pos, a + ab * s);
-                    ShapeByRiver(p, run.x, dSq, n, s, land, wallRun, ref shaping, ref cut);
+                    var foot = a + ab * s;
+                    var dSq = math.distancesq(pos, foot);
+                    var cross = ab.x * (pos.y - foot.y) - ab.y * (pos.x - foot.x);
+                    var side = cross >= 0f ? 1f : -1f;
+                    ShapeByRiver(p, run.x, dSq, side, n, s, land, wallRun, ref shaping, ref cut);
                 }
             }
 
@@ -254,6 +236,80 @@ namespace Revoxel.World
             cut = new SoftNearest { Nearest = float.MaxValue };
         }
 
+        // The lakes with a cell within LakeSearch cells of pos and the distance from pos to
+        // the nearest of their cells (0 inside one), voxels.
+        private static void NearLakes(
+            in TerrainParams p,
+            float2 pos,
+            ref FixedList64Bytes<int> ids,
+            ref FixedList64Bytes<float> distances
+        )
+        {
+            var plan = p.WaterPlan;
+            var home = HydroGrid.CellOf(pos);
+            for (var dz = -LakeSearch; dz <= LakeSearch; dz++)
+            for (var dx = -LakeSearch; dx <= LakeSearch; dx++)
+            {
+                var c = home + new int2(dx, dz);
+                if (!HydroGrid.InGrid(c))
+                {
+                    continue;
+                }
+
+                var k = plan.LakeOf[HydroGrid.Index(c)] - 1;
+                if (k < 0)
+                {
+                    continue;
+                }
+
+                var offset = math.abs(pos - HydroGrid.Center(c)) - HydroGrid.CellVoxels * 0.5f;
+                var distance = math.length(math.max(offset, 0f));
+                var slot = ids.IndexOf(k);
+                if (slot >= 0)
+                {
+                    distances[slot] = math.min(distances[slot], distance);
+                }
+                else if (ids.Length < ids.Capacity)
+                {
+                    ids.Add(k);
+                    distances.Add(distance);
+                }
+            }
+        }
+
+        // Whether a column whose shaped land is land is lake water, by the rule
+        // ShapeByLakes applies, and the highest such lake and its level.
+        public static bool LakeSurface(
+            in TerrainParams p,
+            float2 pos,
+            float land,
+            out int lake,
+            out float level
+        )
+        {
+            lake = -1;
+            level = float.MinValue;
+            if (p.WaterPlan.Lakes.Length == 0)
+            {
+                return false;
+            }
+
+            var ids = new FixedList64Bytes<int>();
+            var distances = new FixedList64Bytes<float>();
+            NearLakes(p, pos, ref ids, ref distances);
+            for (var n = 0; n < ids.Length; n++)
+            {
+                var l = p.WaterPlan.Lakes[ids[n]].Level;
+                if (distances[n] <= LakeShoreReach && math.floor(land) < math.floor(l) && l > level)
+                {
+                    lake = ids[n];
+                    level = l;
+                }
+            }
+
+            return lake >= 0;
+        }
+
         // The column shaped by one segment of a river, from the squared distance to its
         // nearest point on the segment (node + t). Every segment near the column shapes it
         // and the results combine (the lowest cut, the highest floor), so the ground stays
@@ -262,6 +318,7 @@ namespace Revoxel.World
             in TerrainParams p,
             int riverIndex,
             float distanceSq,
+            float side,
             int node,
             float t,
             float land,
@@ -279,6 +336,12 @@ namespace Revoxel.World
             var depth = math.lerp(a.Depth, c.Depth, t);
             var u = math.saturate(distance / halfWidth);
 
+            // The deepest point moves toward the outside of a bend (the side opposite the
+            // turn); the bed still meets the level at both edges.
+            var deepest = -p.BendDepthShift * math.lerp(a.Bend, c.Bend, t);
+            var across = side * u;
+            var w = (across - deepest) / (across > deepest ? 1f - deepest : 1f + deepest);
+
             // A bank holds the water beside it, which may lie a little upstream (a rapid,
             // the face of a fall): it takes the level that far up the river.
             var bankLevel = UpstreamLevel(p, river, node, t, BankHold) + p.BankLip;
@@ -288,7 +351,7 @@ namespace Revoxel.World
                 distance - halfWidth,
                 nearestLevel,
                 bankLevel,
-                math.lerp(nearestLevel - depth, nearestLevel + p.BankLip, u * u),
+                nearestLevel - depth * (1f - w * w),
                 land,
                 out var h
             );
@@ -424,7 +487,9 @@ namespace Revoxel.World
                     return Zone.None;
                 }
 
-                height = bankLevel + rise * math.smoothstep(0f, shoreWidth, edge);
+                // Rising at once from the water's edge (an ease-out), with no flat start.
+                var t = math.saturate(edge / shoreWidth);
+                height = bankLevel + rise * (1f - (1f - t) * (1f - t));
                 if (wallWidth > 0f)
                 {
                     height +=

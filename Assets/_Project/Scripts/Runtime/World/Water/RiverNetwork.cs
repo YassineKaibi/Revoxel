@@ -14,7 +14,7 @@ namespace Revoxel.World
         // After Chaikin the path is cut every half segment and relaxed this many times
         // (about a Gaussian of one segment): Chaikin alone tends to a quadratic B-spline,
         // whose radius at a 90° turn of the grid path is about 11 m, 40° per segment.
-        private const int RelaxPasses = 16;
+        private const int RelaxPasses = 64;
 
         // Levels are read this many times per segment (the last at the node, across the
         // channel too).
@@ -31,6 +31,9 @@ namespace Revoxel.World
         // Widths and depths grow from their values at this drainage (D-080), whatever the
         // channel threshold, km².
         private const float ReferenceAreaKm2 = 1f;
+
+        // A meander's offset is at most this share of its wavelength.
+        private const float MaxMeanderShare = 0.1f;
 
         private enum End : byte
         {
@@ -321,19 +324,31 @@ namespace Revoxel.World
         {
             var side = new float2(-dir.y, dir.x);
             var far = halfWidth + p.BankWidth + SideMarginMeters * WorldConstants.VoxelsPerMeter;
-            var lowest = Land(p, pos);
+            var lowest = Surface(p, pos);
             lowest = math.min(
                 lowest,
-                math.min(Land(p, pos + side * halfWidth), Land(p, pos - side * halfWidth))
+                math.min(Surface(p, pos + side * halfWidth), Surface(p, pos - side * halfWidth))
             );
-            return math.min(lowest, math.min(Land(p, pos + side * far), Land(p, pos - side * far)));
+            return math.min(
+                lowest,
+                math.min(Surface(p, pos + side * far), Surface(p, pos - side * far))
+            );
         }
 
-        private static int LakeAt(in TerrainParams p, float2 pos)
+        // The ground a river's level reads: lake water counts as ground at the lake's level,
+        // so near a lake the river does not drop to the lake's floor (2026-11-24 review).
+        private static float Surface(in TerrainParams p, float2 pos)
         {
-            var cell = HydroGrid.CellOf(pos);
-            return HydroGrid.InGrid(cell) ? p.WaterPlan.LakeOf[HydroGrid.Index(cell)] - 1 : -1;
+            var land = Land(p, pos);
+            return Hydrology.LakeSurface(p, pos, land, out _, out var level) ? level : land;
         }
+
+        private static bool InLake(in TerrainParams p, float2 pos) =>
+            Hydrology.LakeSurface(p, pos, Land(p, pos), out _, out _);
+
+        // How open a river is at arc length s from a lake: 1 at the lake, 0 past the flare.
+        private static float Flare(in TerrainParams p, float s) =>
+            1f - math.smoothstep(0f, p.FlareLength, s);
 
         private static void BuildRiver(
             in TerrainParams p,
@@ -395,6 +410,21 @@ namespace Revoxel.World
             Meander(p, points, scratch, cells[chain.Start]);
             Resample(points, scratch, p.RiverStep);
 
+            // An outlet starts at the shore: its last point in the lake's water.
+            if (chain.SourceLake >= 0)
+            {
+                var shore = 0;
+                while (shore + 1 < points.Length && InLake(p, points[shore + 1].xy))
+                {
+                    shore++;
+                }
+
+                if (shore > 0)
+                {
+                    points.RemoveRange(0, shore);
+                }
+            }
+
             // Levels, walking downstream.
             path.Clear();
             var first = points[0];
@@ -407,6 +437,7 @@ namespace Revoxel.World
                 chain.SourceLake >= 0
                     ? p.WaterPlan.Lakes[chain.SourceLake].Level
                     : math.max(p.SeaLevel, LowestAcross(p, first.xy, dir0, hw0) - p.RiverInset);
+            var arc = 0f;
             path.Add(
                 new RiverNode
                 {
@@ -416,12 +447,17 @@ namespace Revoxel.World
                     Depth = Depth(p, first.z),
                 }
             );
-            var leftLake = chain.SourceLake < 0;
             for (var i = 1; i < points.Length; i++)
             {
                 var from = path[path.Length - 1];
                 var to = points[i];
                 var dir = math.normalizesafe(to.xy - from.Pos);
+                arc += math.distance(from.Pos, to.xy);
+
+                // Over an outlet's sill the water keeps the lake's level: the inset comes in
+                // over the flare.
+                var inset =
+                    chain.SourceLake >= 0 ? p.RiverInset * (1f - Flare(p, arc)) : p.RiverInset;
                 var hw = HalfWidth(p, to.z);
                 var last = i == points.Length - 1;
                 var lowest = float.MaxValue;
@@ -430,8 +466,8 @@ namespace Revoxel.World
                 {
                     var f = (float)s / SegmentSamples;
                     var q = math.lerp(from.Pos, to.xy, f);
-                    var h = s < SegmentSamples ? Land(p, q) : LowestAcross(p, q, dir, hw);
-                    if (dropAt >= 1f && h - p.RiverInset < level)
+                    var h = s < SegmentSamples ? Surface(p, q) : LowestAcross(p, q, dir, hw);
+                    if (dropAt >= 1f && h - inset < level)
                     {
                         dropAt = (s - 1f) / SegmentSamples;
                     }
@@ -439,17 +475,14 @@ namespace Revoxel.World
                     lowest = math.min(lowest, h);
                 }
 
-                leftLake = leftLake || LakeAt(p, to.xy) != chain.SourceLake;
-                var newLevel = leftLake
-                    ? math.max(p.SeaLevel, math.min(level, lowest - p.RiverInset))
-                    : level;
+                var newLevel = math.max(p.SeaLevel, math.min(level, lowest - inset));
                 var done = false;
                 if (chain.End == End.Sea && Land(p, to.xy) < p.SeaLevel)
                 {
                     newLevel = p.SeaLevel;
                     done = true;
                 }
-                else if (endLake >= 0 && (last || LakeAt(p, to.xy) == endLake))
+                else if (endLake >= 0 && (last || InLake(p, to.xy)))
                 {
                     newLevel = joinLevel;
                     done = true;
@@ -487,11 +520,40 @@ namespace Revoxel.World
                 }
             }
 
+            PoolsAndBends(p, path, cells[chain.Start]);
+
+            // Flares (2026-11-24 review): where a river leaves or enters a lake it opens in a
+            // V, wider and shallower toward the lake's water.
+            if (chain.SourceLake >= 0 || endLake >= 0)
+            {
+                var total = 0f;
+                for (var n = 1; n < path.Length; n++)
+                {
+                    total += math.distance(path[n - 1].Pos, path[n].Pos);
+                }
+
+                var along = 0f;
+                for (var n = 0; n < path.Length; n++)
+                {
+                    along += n > 0 ? math.distance(path[n - 1].Pos, path[n].Pos) : 0f;
+                    var open = math.max(
+                        chain.SourceLake >= 0 ? Flare(p, along) : 0f,
+                        endLake >= 0 ? Flare(p, total - along) : 0f
+                    );
+                    var node = path[n];
+                    node.HalfWidth *= 1f + (p.FlareWidth - 1f) * open;
+                    node.Depth *= math.lerp(1f, p.FlareDepth, open);
+                    path[n] = node;
+                }
+            }
+
             var river = new River
             {
                 Start = nodes.Length,
                 Count = path.Length,
                 Bounds = new float4(float.MaxValue, float.MaxValue, float.MinValue, float.MinValue),
+                SourceLake = chain.SourceLake,
+                EndLake = endLake,
             };
             for (var n = 0; n < path.Length; n++)
             {
@@ -577,8 +639,15 @@ namespace Revoxel.World
             points.AddRange(scratch.AsArray());
         }
 
-        // Offsets each point across the path by MeanderAmplitude half widths times a noise
-        // along the arc, faded out near both ends.
+        // A river's meander wavelength at a half width: MeanderWavelengthWidths channel
+        // widths, at least the shortest wavelength, voxels.
+        private static float Wavelength(in TerrainParams p, float halfWidth) =>
+            math.max(p.MeanderMinWavelength, p.MeanderWavelengthWidths * 2f * halfWidth);
+
+        // Offsets each point across the path by a wave along the arc whose wavelength
+        // follows the river's width (the phase is integrated, so it stays continuous as the
+        // river widens), by MeanderAmplitude half widths and at least MeanderMin, faded out
+        // near both ends.
         private static void Meander(
             in TerrainParams p,
             NativeList<float3> points,
@@ -600,25 +669,92 @@ namespace Revoxel.World
             scratch.Clear();
             scratch.Add(points[0]);
             var arc = 0f;
+            var phase = 0f;
             var lane = p.MeanderOffset.y + (seedCell % 4096) * 0.731f;
             for (var i = 1; i + 1 < points.Length; i++)
             {
-                arc += math.distance(points[i - 1].xy, points[i].xy);
+                var step = math.distance(points[i - 1].xy, points[i].xy);
+                var halfWidth = HalfWidth(p, points[i].z);
+                arc += step;
+                phase += step / Wavelength(p, halfWidth);
                 var tangent = math.normalizesafe(points[i + 1].xy - points[i - 1].xy);
                 var side = new float2(-tangent.y, tangent.x);
                 var taper =
                     math.smoothstep(0f, MeanderTaper, arc)
                     * math.smoothstep(0f, MeanderTaper, total - arc);
-                var wave = noise.snoise(
-                    new float2(arc * p.MeanderFrequency + p.MeanderOffset.x, lane)
+                // A sine whose phase and size wander a little: every stretch winds, no two
+                // bends are alike, and no noise peak makes a kink.
+                var drift =
+                    0.15f * noise.snoise(new float2(phase * 0.3f + p.MeanderOffset.x, lane));
+                var size = 0.8f + 0.2f * noise.snoise(new float2(phase * 0.3f, lane + 13f));
+                var wave = size * math.sin(2f * math.PI * (phase + drift));
+                // At most a tenth of the wavelength: tighter bends turn more than the 35° a
+                // segment allows where the wavelength is held at its minimum.
+                var amplitude = math.min(
+                    math.max(p.MeanderAmplitude * halfWidth, p.MeanderMin),
+                    MaxMeanderShare * Wavelength(p, halfWidth)
                 );
-                var offset = p.MeanderAmplitude * HalfWidth(p, points[i].z) * wave * taper;
-                scratch.Add(new float3(points[i].xy + side * offset, points[i].z));
+                scratch.Add(
+                    new float3(points[i].xy + side * (amplitude * wave * taper), points[i].z)
+                );
             }
 
             scratch.Add(points[points.Length - 1]);
             points.Clear();
             points.AddRange(scratch.AsArray());
+        }
+
+        // Pools and riffles: depth varies along the river by a noise at half the meander
+        // wavelength; and each node's bend (signed curvature in half widths, smoothed over
+        // its neighbors) for the deeper water at the outside of bends.
+        private static void PoolsAndBends(
+            in TerrainParams p,
+            NativeList<RiverNode> path,
+            int seedCell
+        )
+        {
+            var lane = p.MeanderOffset.x + (seedCell % 4096) * 0.517f + 31f;
+            var phase = 0f;
+            var bends = new NativeArray<float>(path.Length, Allocator.Temp);
+            for (var n = 0; n < path.Length; n++)
+            {
+                var node = path[n];
+                if (n > 0)
+                {
+                    phase +=
+                        2f
+                        * math.distance(path[n - 1].Pos, node.Pos)
+                        / Wavelength(p, node.HalfWidth);
+                }
+
+                node.Depth *= 1f + p.DepthVariation * noise.snoise(new float2(phase, lane));
+                path[n] = node;
+                if (n > 0 && n + 1 < path.Length)
+                {
+                    var a = node.Pos - path[n - 1].Pos;
+                    var b = path[n + 1].Pos - node.Pos;
+                    var length = 0.5f * (math.length(a) + math.length(b));
+                    var turn = math.atan2(a.x * b.y - a.y * b.x, math.dot(a, b));
+                    bends[n] = length > 0f ? turn / length * node.HalfWidth * 3f : 0f;
+                }
+            }
+
+            for (var n = 0; n < path.Length; n++)
+            {
+                var sum = 0f;
+                var count = 0;
+                for (var k = math.max(0, n - 2); k <= math.min(path.Length - 1, n + 2); k++)
+                {
+                    sum += bends[k];
+                    count++;
+                }
+
+                var node = path[n];
+                node.Bend = math.clamp(sum / count, -1f, 1f);
+                path[n] = node;
+            }
+
+            bends.Dispose();
         }
 
         // Points every step along the polyline, the last point kept; a last piece shorter

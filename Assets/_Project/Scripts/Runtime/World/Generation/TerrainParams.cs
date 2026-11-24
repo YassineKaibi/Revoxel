@@ -91,11 +91,20 @@ namespace Revoxel.World
         public float MaxDepth;
         public int SmoothingIterations;
         public float MeanderAmplitude;
-        public float MeanderFrequency;
+        public float MeanderWavelengthWidths;
+        public float MeanderMinWavelength;
+        public float MeanderMin;
+        public float DepthVariation;
+        public float BendDepthShift;
 
         // Length of a river segment, voxels.
         public float RiverStep;
         public float RiverInset;
+
+        // Length (voxels), width factor and depth share of a river's flare at a lake.
+        public float FlareLength;
+        public float FlareWidth;
+        public float FlareDepth;
         public float FallMin;
         public float FallSteepness;
         public float BankWidth;
@@ -294,9 +303,16 @@ namespace Revoxel.World
             p.MaxDepth = w.MaxDepthMeters * v;
             p.SmoothingIterations = w.SmoothingIterations;
             p.MeanderAmplitude = w.MeanderAmplitude;
-            p.MeanderFrequency = Frequency(w.MeanderScaleMeters);
+            p.MeanderWavelengthWidths = w.MeanderWavelengthWidths;
+            p.MeanderMinWavelength = w.MeanderMinWavelengthMeters * v;
+            p.MeanderMin = w.MeanderMinMeters * v;
+            p.DepthVariation = w.DepthVariation;
+            p.BendDepthShift = w.BendDepthShift;
             p.RiverStep = w.SegmentMeters * v;
             p.RiverInset = w.RiverInsetMeters * v;
+            p.FlareLength = w.FlareMeters * v;
+            p.FlareWidth = w.FlareWidth;
+            p.FlareDepth = w.FlareDepth;
             p.FallMin = w.FallMinMeters * v;
             p.FallSteepness = w.FallSteepness;
             p.BankWidth = w.BankWidthMeters * v;

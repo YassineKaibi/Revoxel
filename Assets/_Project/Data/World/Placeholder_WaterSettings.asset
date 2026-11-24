@@ -29,9 +29,16 @@ MonoBehaviour:
   _minDepthMeters: 0.5
   _maxDepthMeters: 4
   _smoothingIterations: 2
-  _meanderAmplitude: 1.5
-  _meanderScaleMeters: 120
+  _meanderAmplitude: 3
+  _meanderWavelengthWidths: 12
+  _meanderMinWavelengthMeters: 60
+  _meanderMinMeters: 5
+  _depthVariation: 0.4
+  _bendDepthShift: 0.5
   _segmentMeters: 8
+  _flareMeters: 24
+  _flareWidth: 3
+  _flareDepth: 0.3
   _riverInsetMeters: 0.5
   _fallMinMeters: 2
   _fallSteepness: 4

@@ -110,15 +110,54 @@ namespace Revoxel.World
 
         [SerializeField]
         [Tooltip("Meander offset across the path, in half widths." + Placeholder)]
-        private float _meanderAmplitude = 1.5f;
+        private float _meanderAmplitude = 3f;
 
         [SerializeField]
-        [Tooltip("Length of a meander along the river, m." + Placeholder)]
-        private float _meanderScaleMeters = 120f;
+        [Tooltip("Meander wavelength in channel widths." + Placeholder)]
+        private float _meanderWavelengthWidths = 12f;
+
+        [SerializeField]
+        [Tooltip("Shortest meander wavelength, m." + Placeholder)]
+        private float _meanderMinWavelengthMeters = 60f;
+
+        [SerializeField]
+        [Tooltip("Smallest meander offset across the path, m." + Placeholder)]
+        private float _meanderMinMeters = 5f;
+
+        [SerializeField]
+        [Tooltip(
+            "Depth varies along a river by up to this share (pools and riffles)." + Placeholder
+        )]
+        [Range(0f, 0.9f)]
+        private float _depthVariation = 0.4f;
+
+        [SerializeField]
+        [Tooltip(
+            "In a tight bend the deepest water moves this share of the half width to the outside."
+                + Placeholder
+        )]
+        [Range(0f, 0.9f)]
+        private float _bendDepthShift = 0.5f;
 
         [SerializeField]
         [Tooltip("Length of a river segment, m." + Placeholder)]
         private float _segmentMeters = 8f;
+
+        [SerializeField]
+        [Tooltip(
+            "Where a river leaves or enters a lake it opens in a V over this length, m."
+                + Placeholder
+        )]
+        private float _flareMeters = 24f;
+
+        [SerializeField]
+        [Tooltip("At the lake a river is this many times as wide as past its flare." + Placeholder)]
+        private float _flareWidth = 3f;
+
+        [SerializeField]
+        [Tooltip("At the lake a river is this share of its depth past its flare." + Placeholder)]
+        [Range(0f, 1f)]
+        private float _flareDepth = 0.3f;
 
         [SerializeField]
         [Tooltip(
@@ -206,9 +245,23 @@ namespace Revoxel.World
 
         public float MeanderAmplitude => _meanderAmplitude;
 
-        public float MeanderScaleMeters => _meanderScaleMeters;
+        public float MeanderWavelengthWidths => _meanderWavelengthWidths;
+
+        public float MeanderMinWavelengthMeters => _meanderMinWavelengthMeters;
+
+        public float MeanderMinMeters => _meanderMinMeters;
+
+        public float DepthVariation => _depthVariation;
+
+        public float BendDepthShift => _bendDepthShift;
 
         public float SegmentMeters => _segmentMeters;
+
+        public float FlareMeters => _flareMeters;
+
+        public float FlareWidth => _flareWidth;
+
+        public float FlareDepth => _flareDepth;
 
         public float RiverInsetMeters => _riverInsetMeters;
 
@@ -266,8 +319,12 @@ namespace Revoxel.World
             else if (
                 _segmentMeters < 2f
                 || _meanderAmplitude < 0f
-                || _meanderScaleMeters <= 0f
+                || _meanderWavelengthWidths <= 0f
+                || _meanderMinWavelengthMeters <= 0f
+                || _meanderMinMeters < 0f
                 || _riverInsetMeters < 0f
+                || _flareMeters < 0f
+                || _flareWidth < 1f
                 || _fallMinMeters <= 0f
                 || _fallSteepness <= 0f
             )
