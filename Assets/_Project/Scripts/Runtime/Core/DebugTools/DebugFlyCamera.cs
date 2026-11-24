@@ -135,9 +135,36 @@ namespace Revoxel.Core
             _pitch = angles.x > 180f ? angles.x - 360f : angles.x;
         }
 
+        // Placed once the water plan is built: a query before would wait for it (D-077).
         private void Start()
         {
-            if (_world != null && _world.TryGetSurfaceHeightMeters(0, 0, out var surface))
+            if (_world == null)
+            {
+                return;
+            }
+
+            if (_world.IsWaterPlanReady)
+            {
+                PlaceAtStart();
+            }
+            else
+            {
+                _world.WaterPlanReady += PlaceAtStart;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_world != null)
+            {
+                _world.WaterPlanReady -= PlaceAtStart;
+            }
+        }
+
+        private void PlaceAtStart()
+        {
+            _world.WaterPlanReady -= PlaceAtStart;
+            if (_world.TryGetSurfaceHeightMeters(0, 0, out var surface))
             {
                 // Over water the camera starts above its surface (WP-05).
                 if (_world.TryGetWaterColumn(0, 0, out var water) && water.IsWet)

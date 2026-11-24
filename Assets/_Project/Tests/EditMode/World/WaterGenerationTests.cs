@@ -22,17 +22,22 @@ namespace Revoxel.Tests.EditMode
         {
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
             using var squares = new NativeList<int3>(512, Allocator.TempJob);
-            for (var n = 0; n < p.RiverNodes.Length; n += 2)
+            for (var n = 0; n < p.WaterPlan.Nodes.Length; n += 2)
             {
-                squares.Add(new int3((int2)math.floor(p.RiverNodes[n].Pos), RiverSquareHalf));
+                squares.Add(new int3((int2)math.floor(p.WaterPlan.Nodes[n].Pos), RiverSquareHalf));
             }
 
             var rivers = Survey(p, squares, 1);
             squares.Clear();
-            for (var i = 0; i < p.Lakes.Length; i++)
+            for (var i = 0; i < p.WaterPlan.Lakes.Length; i++)
             {
-                var lake = p.Lakes[i];
-                squares.Add(new int3((int2)math.floor(lake.Center), (int)lake.Reach));
+                var lake = p.WaterPlan.Lakes[i];
+                squares.Add(
+                    new int3(
+                        (int2)math.floor(lake.Center),
+                        (int)lake.Radius + 2 * HydroGrid.CellVoxels
+                    )
+                );
             }
 
             var lakes = Survey(p, squares, LakeStride);
@@ -49,8 +54,12 @@ namespace Revoxel.Tests.EditMode
         public void Water_ChunksFillToTheColumnLevel()
         {
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
-            var lake = p.Lakes[0];
-            var voxel = new int3((int)lake.Center.x, (int)lake.Level - 1, (int)lake.Center.y);
+            var lake = p.WaterPlan.Lakes[0];
+            var voxel = new int3(
+                (int)lake.DeepestPoint.x,
+                (int)lake.Level - 1,
+                (int)lake.DeepestPoint.y
+            );
             var coord = Coords.ChunkOf(voxel);
             var voxels = TerrainGenerator.GenerateChunk(p, coord, Allocator.Persistent);
             try
@@ -98,14 +107,20 @@ namespace Revoxel.Tests.EditMode
             var columns = new NativeList<int2>(8, Allocator.Temp);
             columns.Add(
                 Coords.ColumnOf(
-                    Coords.ChunkOf(new int3((int)p.Lakes[0].Center.x, 0, (int)p.Lakes[0].Center.y))
+                    Coords.ChunkOf(
+                        new int3(
+                            (int)p.WaterPlan.Lakes[0].DeepestPoint.x,
+                            0,
+                            (int)p.WaterPlan.Lakes[0].DeepestPoint.y
+                        )
+                    )
                 )
             );
-            for (var n = 0; n + 1 < p.RiverNodes.Length && columns.Length < 2; n++)
+            for (var n = 0; n + 1 < p.WaterPlan.Nodes.Length && columns.Length < 2; n++)
             {
-                if (p.RiverNodes[n].Level - p.RiverNodes[n + 1].Level >= p.FallMin)
+                if (p.WaterPlan.Nodes[n].Level - p.WaterPlan.Nodes[n + 1].Level >= p.FallMin)
                 {
-                    var pos = (int2)math.floor(p.RiverNodes[n].Pos);
+                    var pos = (int2)math.floor(p.WaterPlan.Nodes[n].Pos);
                     columns.Add(Coords.ColumnOf(Coords.ChunkOf(new int3(pos.x, 0, pos.y))));
                 }
             }
@@ -156,9 +171,9 @@ namespace Revoxel.Tests.EditMode
         public void Water_BedsUnderLakesAndRivers()
         {
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
-            for (var i = 0; i < p.Lakes.Length; i++)
+            for (var i = 0; i < p.WaterPlan.Lakes.Length; i++)
             {
-                var c = (int2)math.floor(p.Lakes[i].Center);
+                var c = (int2)math.floor(p.WaterPlan.Lakes[i].DeepestPoint);
                 var column = TerrainGenerator.Column(p, c.x, c.y);
                 Assert.That(
                     TerrainGenerator.MaterialAt(p, column, column.Surface - 1),
@@ -168,9 +183,9 @@ namespace Revoxel.Tests.EditMode
             }
 
             var rivers = 0;
-            for (var n = 0; n < p.RiverNodes.Length && rivers < 20; n++)
+            for (var n = 0; n < p.WaterPlan.Nodes.Length && rivers < 20; n++)
             {
-                var c = (int2)math.floor(p.RiverNodes[n].Pos);
+                var c = (int2)math.floor(p.WaterPlan.Nodes[n].Pos);
                 var sample = TerrainGenerator.Sample(p, c.x, c.y);
                 if (
                     sample.Body != WaterBody.River
@@ -255,10 +270,10 @@ namespace Revoxel.Tests.EditMode
                 WorldConstants.PaddedVoxels,
                 Allocator.TempJob
             );
-            for (var i = 0; i < p.Lakes.Length; i++)
+            for (var i = 0; i < p.WaterPlan.Lakes.Length; i++)
             {
-                var lake = p.Lakes[i];
-                var center = (int2)math.floor(lake.Center);
+                var lake = p.WaterPlan.Lakes[i];
+                var center = (int2)math.floor(lake.DeepestPoint);
                 for (var level = 1; level <= MatchingLevels; level++)
                 {
                     var s = 1 << level;
@@ -304,10 +319,10 @@ namespace Revoxel.Tests.EditMode
             var p = WorldAssets.TerrainParams(Seeds.Fixture);
             var rivers = new System.Collections.Generic.List<float>();
             var lakes = new System.Collections.Generic.List<float>();
-            for (var n = 0; n + 1 < p.RiverNodes.Length; n += 3)
+            for (var n = 0; n + 1 < p.WaterPlan.Nodes.Length; n += 3)
             {
-                var a = p.RiverNodes[n].Pos;
-                var dir = math.normalizesafe(p.RiverNodes[n + 1].Pos - a);
+                var a = p.WaterPlan.Nodes[n].Pos;
+                var dir = math.normalizesafe(p.WaterPlan.Nodes[n + 1].Pos - a);
                 var side = new float2(-dir.y, dir.x);
                 foreach (var d in new[] { side, -side })
                 {
@@ -318,14 +333,16 @@ namespace Revoxel.Tests.EditMode
                 }
             }
 
-            for (var i = 0; i < p.Lakes.Length; i++)
+            for (var i = 0; i < p.WaterPlan.Lakes.Length; i++)
             {
                 for (var k = 0; k < 16; k++)
                 {
                     var angle = k * math.PI / 8f;
                     var d = new float2(math.cos(angle), math.sin(angle));
-                    var length = (int)p.Lakes[i].Radius + 1200;
-                    if (SteepestShaped(p, p.Lakes[i].Center, d, length, out var deg))
+                    var length = (int)p.WaterPlan.Lakes[i].Radius + 1200;
+                    if (
+                        SteepestShaped(p, p.WaterPlan.Lakes[i].DeepestPoint, d, length, out var deg)
+                    )
                     {
                         lakes.Add(deg);
                     }
@@ -334,8 +351,8 @@ namespace Revoxel.Tests.EditMode
 
             Assert.That(rivers.Count, Is.GreaterThan(100), "river sections");
             Assert.That(lakes.Count, Is.GreaterThan(100), "lake sections");
-            Assert.That(Percentile90(rivers), Is.LessThan(40f), "river banks, 90th percentile");
-            Assert.That(Percentile90(lakes), Is.LessThan(32f), "lake shores, 90th percentile");
+            Assert.That(Percentile90(rivers), Is.LessThan(35f), "river banks, 90th percentile");
+            Assert.That(Percentile90(lakes), Is.LessThan(30f), "lake shores, 90th percentile");
         }
 
         // Walking out of the water along dir: the steepest step (degrees, over 1 m) between

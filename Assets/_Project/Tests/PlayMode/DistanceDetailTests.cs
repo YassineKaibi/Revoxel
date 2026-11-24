@@ -184,6 +184,7 @@ namespace Revoxel.Tests.PlayMode
             VoxelWorld world = null;
             DistanceDetail detail = null;
             yield return LoadIsland((w, d) => (world, detail) = (w, d));
+            yield return WaitFor(() => world.IsStreaming, "the water plan");
             for (var i = 0; i < 10; i++)
             {
                 yield return null;
@@ -195,6 +196,42 @@ namespace Revoxel.Tests.PlayMode
             Assert.That(detail.Stats.PendingJobs, Is.GreaterThan(0));
 
             Object.Destroy(world.gameObject);
+            yield return null;
+            yield return null;
+
+            Assert.That(
+                UnsafeUtility.CheckForLeaks(),
+                Is.LessThanOrEqualTo(leaksBefore),
+                "Native leaks"
+            );
+            Assert.That(_problems, Is.Empty, string.Join("\n", _problems));
+        }
+
+        // D-078: the world frees the water plan its distance detail borrows. Destroying the
+        // world component first, while detail jobs read the plan, must finish those jobs
+        // first: no error, no leak.
+        [UnityTest]
+        public IEnumerator World_DestroyWorldBeforeDetail_NoErrors()
+        {
+            yield return UnloadAllScenes();
+            var leaksBefore = UnsafeUtility.CheckForLeaks();
+            VoxelWorld world = null;
+            DistanceDetail detail = null;
+            yield return LoadIsland((w, d) => (world, detail) = (w, d));
+            yield return WaitFor(() => world.IsStreaming, "the water plan");
+            for (var i = 0; i < 10; i++)
+            {
+                yield return null;
+            }
+
+            _focus.transform.position += new Vector3(300 * ColumnMeters, 0f, 0f);
+            yield return null;
+            yield return null;
+            Assert.That(detail.Stats.PendingJobs, Is.GreaterThan(0));
+
+            Object.DestroyImmediate(world);
+            yield return null;
+            Object.Destroy(detail.gameObject);
             yield return null;
             yield return null;
 

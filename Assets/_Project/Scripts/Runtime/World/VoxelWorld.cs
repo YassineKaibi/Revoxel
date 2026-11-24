@@ -107,6 +107,11 @@ namespace Revoxel.World
         private bool[] _liquid;
         private TerrainParams _queryParams;
         private bool _hasQueryParams;
+        private bool _ownsParams;
+
+        // The water plan being built in the background (D-077); streaming starts when it is
+        // done.
+        private TerrainParamsBuild _build;
         private bool _underwater;
         private ChunkMeshPipeline _pipeline;
         private ChunkViewPool _views;
@@ -141,6 +146,15 @@ namespace Revoxel.World
 
         // Raised once, the first time nothing wanted is pending.
         public event Action FirstSettled;
+
+        // Raised before the world frees its resources, the water plan among them (D-078):
+        // whoever borrowed TerrainParameters (DistanceDetail) completes its jobs and drops it.
+        internal event Action Releasing;
+
+        // Raised once the water plan is built and streaming starts (the camera is placed then).
+        public event Action WaterPlanReady;
+
+        public bool IsWaterPlanReady { get; private set; }
 
         public bool IsInitialized => _bounds != null;
 
@@ -369,11 +383,27 @@ namespace Revoxel.World
             return true;
         }
 
+        private void DisposeQueryParams()
+        {
+            if (_hasQueryParams)
+            {
+                _queryParams.Dispose();
+                _hasQueryParams = false;
+            }
+        }
+
         // The streaming parameters, or ones built once for queries before streaming starts.
         private TerrainParams QueryParams()
         {
             if (_streaming)
             {
+                return _params;
+            }
+
+            // A query before the plan is built waits for it.
+            if (_build != null)
+            {
+                FinishBuild();
                 return _params;
             }
 
@@ -525,6 +555,7 @@ namespace Revoxel.World
 
         public void ReleaseResources()
         {
+            Releasing?.Invoke();
             CompleteGenerationJobs();
             _pipeline?.Dispose();
             _pipeline = null;
@@ -564,6 +595,16 @@ namespace Revoxel.World
                 VoxelShaderGlobals.SetUnderwater(false);
             }
 
+            _build?.Dispose();
+            _build = null;
+            IsWaterPlanReady = false;
+            if (_ownsParams)
+            {
+                _params.Dispose();
+                _ownsParams = false;
+            }
+
+            DisposeQueryParams();
             _chunks.Clear();
             _columns.Clear();
             _urgent.Clear();
@@ -594,6 +635,16 @@ namespace Revoxel.World
 
         private void Update()
         {
+            if (_build != null)
+            {
+                if (!_build.IsCompleted)
+                {
+                    return;
+                }
+
+                FinishBuild();
+            }
+
             if (!_streaming)
             {
                 return;
@@ -686,6 +737,18 @@ namespace Revoxel.World
             }
         }
 
+        // The plan is built: the world owns the parameters and streams from now on.
+        private void FinishBuild()
+        {
+            _params = _build.Complete();
+            _build = null;
+            _ownsParams = true;
+            DisposeQueryParams();
+            _streaming = true;
+            IsWaterPlanReady = true;
+            WaterPlanReady?.Invoke();
+        }
+
         private bool TryStartStreaming(out string error)
         {
             if (
@@ -713,8 +776,8 @@ namespace Revoxel.World
             }
 
             Initialize(_registry, WorldBounds.Island());
-            _params = TerrainParams.Create(new WorldSeed(_seed), _terrainSettings);
-            _hasQueryParams = false;
+            DisposeQueryParams();
+            _build = TerrainParams.Schedule(new WorldSeed(_seed), _terrainSettings);
             _opaque = new bool[WorldConstants.MaxVoxelTypes];
             using (var renderData = _registry.CreateRenderData(Allocator.Temp))
             {
@@ -752,7 +815,6 @@ namespace Revoxel.World
             }
 
             _bakeIds = new NativeArray<EntityId>(64, Allocator.Persistent);
-            _streaming = true;
             error = string.Empty;
             return true;
         }

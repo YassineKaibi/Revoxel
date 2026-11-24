@@ -194,6 +194,7 @@ namespace Revoxel.UI
             var camera = Camera.main;
             if (
                 camera == null
+                || !_world.IsWaterPlanReady
                 || !_world.TrySampleWater(camera.transform.position, out var water)
                 || !water.InWater
             )
@@ -215,6 +216,7 @@ namespace Revoxel.UI
             var camera = Camera.main;
             if (
                 camera == null
+                || !_world.IsWaterPlanReady
                 || !_world.TrySampleBiome(camera.transform.position, out var sample)
                 || !_world.TryGetBiome(sample.Biome, out var biome)
             )

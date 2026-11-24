@@ -82,6 +82,24 @@ namespace Revoxel.World
             return Shape(p, fields, weights, out _, out _, out _, out _);
         }
 
+        // The land after erosion and filled pits, before lakes and rivers: the raw land plus
+        // the plan's interpolated change (D-079).
+        public static float ShapedLandHeight(in TerrainParams p, int x, int z) =>
+            LandHeight(p, x, z, out _) + p.WaterPlan.DeltaAt(new float2(x + 0.5f, z + 0.5f));
+
+        // The moisture field (0 dry to 1 wet) of a column and its raw land height, voxels:
+        // what the hydrology grid samples (D-077).
+        public static float LandMoisture(in TerrainParams p, int x, int z, out float land)
+        {
+            var fields = ComputeFields(p, x, z);
+            var weights = new FixedList128Bytes<float>();
+            ComputeWeights(p, fields, ref weights);
+            land = Clamp(
+                Reef(p, fields.Pos, weights, HeightFrom(p, fields, weights), out _, out _)
+            );
+            return fields.Moisture;
+        }
+
         // The height of the land before lakes and rivers shape it, voxels, and the inland
         // field: what Hydrology.Plan reads.
         public static float LandHeight(in TerrainParams p, int x, int z, out float inland)
@@ -751,6 +769,7 @@ namespace Revoxel.World
         {
             var land = Clamp(
                 Reef(p, f.Pos, weights, HeightFrom(p, f, weights), out reef, out reefBiome)
+                    + p.WaterPlan.DeltaAt(f.Pos)
             );
             // River valley walls as steep as the biomes say (D-076), blended by weight.
             var wallRun = 0f;

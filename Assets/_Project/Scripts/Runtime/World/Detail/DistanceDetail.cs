@@ -244,7 +244,10 @@ namespace Revoxel.World
                 _shownBelow[level] = new Dictionary<int2, int>();
             }
 
+            // Borrowed from the world (D-078): released before the world frees it.
             _params = _world.TerrainParameters;
+            _world.Releasing -= OnWorldReleasing;
+            _world.Releasing += OnWorldReleasing;
             _renderData = _world.Registry.CreateRenderData(Allocator.Persistent);
             _renderLayout = ChunkMesher.CreateRenderLayout(Allocator.Persistent);
             _collisionLayout = ChunkMesher.CreateCollisionLayout(Allocator.Persistent);
@@ -1106,9 +1109,19 @@ namespace Revoxel.World
             _busySlots = 0;
             _shownCells = 0;
             _meshBytes = 0;
+            if (_world != null)
+            {
+                _world.Releasing -= OnWorldReleasing;
+            }
+
+            _params = default;
             _running = false;
             IsSettled = false;
         }
+
+        // The world is about to free the water plan this detail reads: finish every job
+        // and let go; TryStart starts again once the world streams again.
+        private void OnWorldReleasing() => ReleaseResources();
 
         private sealed class HeightSlot
         {

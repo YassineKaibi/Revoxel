@@ -38,7 +38,31 @@ namespace Revoxel.Tests.EditMode
         public static TerrainSettings LoadTerrainSettings() =>
             AssetDatabase.LoadAssetAtPath<TerrainSettings>(TerrainSettingsPath);
 
-        public static TerrainParams TerrainParams(int seed) =>
-            World.TerrainParams.Create(new WorldSeed(seed), LoadTerrainSettings());
+        // One shared TerrainParams per seed for the whole run (D-078): building the water plan
+        // costs time, and its arrays are freed once by TerrainParamsCache. Callers only read
+        // it; a test that needs its own plan calls TerrainParams.Create and disposes it.
+        public static TerrainParams TerrainParams(int seed)
+        {
+            if (!Cache.TryGetValue(seed, out var p))
+            {
+                p = World.TerrainParams.Create(new WorldSeed(seed), LoadTerrainSettings());
+                Cache.Add(seed, p);
+            }
+
+            return p;
+        }
+
+        internal static void DisposeCache()
+        {
+            foreach (var p in Cache.Values)
+            {
+                p.Dispose();
+            }
+
+            Cache.Clear();
+        }
+
+        private static readonly System.Collections.Generic.Dictionary<int, TerrainParams> Cache =
+            new System.Collections.Generic.Dictionary<int, TerrainParams>();
     }
 }
